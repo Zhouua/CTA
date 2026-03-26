@@ -426,11 +426,88 @@ def add_daily_exposure_ratios(daily: pd.DataFrame) -> pd.DataFrame:
     return exposure
 
 
+def plot_split_switch_and_return(
+    ax,
+    prediction_df: pd.DataFrame,
+    daily_df: pd.DataFrame,
+    split_name: str,
+) -> None:
+    if prediction_df.empty or daily_df.empty:
+        ax.set_axis_off()
+        return
+
+    regime_daily = (
+        prediction_df.groupby("TRADE_DATE", sort=True)
+        .agg(REGIME_LABEL=("REGIME_LABEL", "first"))
+        .reset_index()
+    )
+    regime_daily["TRADE_DATE"] = pd.to_datetime(regime_daily["TRADE_DATE"])
+    regime_daily["REGIME_NAME"] = regime_daily["REGIME_LABEL"].map(REGIME_NAME_MAP)
+    merged = daily_df.merge(regime_daily, on="TRADE_DATE", how="left")
+
+    color_map = {"low_vol": "#7BC96F", "high_vol": "#F28B82"}
+    current_name = None
+    start_date = None
+    segments: list[tuple[pd.Timestamp, pd.Timestamp, str]] = []
+
+    for row in regime_daily.itertuples(index=False):
+        regime_name = str(row.REGIME_NAME)
+        trade_date = pd.to_datetime(row.TRADE_DATE)
+        if current_name is None:
+            current_name = regime_name
+            start_date = trade_date
+            continue
+        if regime_name != current_name:
+            segments.append((start_date, trade_date, current_name))
+            current_name = regime_name
+            start_date = trade_date
+    if current_name is not None and start_date is not None:
+        segments.append((start_date, pd.to_datetime(regime_daily["TRADE_DATE"].iloc[-1]) + pd.Timedelta(days=1), current_name))
+
+    for seg_start, seg_end, regime_name in segments:
+        ax.axvspan(seg_start, seg_end, color=color_map[regime_name], alpha=0.28, linewidth=0)
+
+    bar_colors = np.where(merged["net_ret"] >= 0, "#1f77b4", "#8c2d04")
+    ax.bar(merged["TRADE_DATE"], merged["net_ret"], color=bar_colors, alpha=0.75, width=1.0, label="Daily net return")
+    ax.axhline(0.0, color="black", linewidth=0.8)
+    ax.set_title(f"{split_name} Model Switch And Daily Return")
+    ax.grid(alpha=0.25)
+
+    ax2 = ax.twinx()
+    ax2.plot(merged["TRADE_DATE"], merged["nav_net"], color="#111111", linewidth=1.2, label="Net NAV")
+    ax2.set_ylabel("Net NAV")
+    ax2.grid(False)
+
+    from matplotlib.patches import Patch
+
+    handles = [
+        Patch(facecolor=color_map["low_vol"], alpha=0.28, label="low_vol model active"),
+        Patch(facecolor=color_map["high_vol"], alpha=0.28, label="high_vol model active"),
+    ]
+    ax.legend(handles=handles, loc="upper left", fontsize=8)
+    ax2.legend(loc="upper right", fontsize=8)
+
+    counts = regime_daily["REGIME_NAME"].value_counts().to_dict()
+    ax.text(
+        0.01,
+        0.02,
+        f"low_vol days={int(counts.get('low_vol', 0))}, high_vol days={int(counts.get('high_vol', 0))}",
+        transform=ax.transAxes,
+        fontsize=8.5,
+        va="bottom",
+        ha="left",
+        bbox={"boxstyle": "round,pad=0.35", "facecolor": "white", "alpha": 0.88, "edgecolor": "#bbbbbb"},
+    )
+
+
 def plot_backtest(
     pnl_df: pd.DataFrame,
     daily: pd.DataFrame,
     benchmark_long_daily: pd.DataFrame,
     benchmark_short_daily: pd.DataFrame,
+    validation_prediction_df: pd.DataFrame,
+    test_prediction_df: pd.DataFrame,
+    validation_daily: pd.DataFrame,
     output_path: Path,
 ) -> None:
     if daily.empty or pnl_df.empty:
@@ -441,7 +518,7 @@ def plot_backtest(
     import matplotlib.pyplot as plt
 
     exposure = add_daily_exposure_ratios(daily)
-    fig, axes = plt.subplots(4, 2, figsize=(20, 22))
+    fig, axes = plt.subplots(5, 2, figsize=(20, 27))
 
     sampled_step = max(len(pnl_df) // 5000, 1)
     sampled_pnl = pnl_df.iloc[::sampled_step].copy()
@@ -451,12 +528,32 @@ def plot_backtest(
 
     axes[0, 0].plot(daily["TRADE_DATE"], daily["nav_gross"], color="#7f7f7f", linestyle="--", label="Strategy Gross")
     axes[0, 0].plot(daily["TRADE_DATE"], daily["nav_net"], color="#1f77b4", label="Strategy Net")
-    axes[0, 0].plot(benchmark_long_daily["TRADE_DATE"], benchmark_long_daily["nav_net"], color="#2ca02c", label="Long Only")
-    axes[0, 0].plot(benchmark_short_daily["TRADE_DATE"], benchmark_short_daily["nav_net"], color="#d62728", label="Short Only")
+    axes[0, 0].plot(
+        benchmark_long_daily["TRADE_DATE"],
+        benchmark_long_daily["nav_net"],
+        color="#2ca02c",
+        label="Benchmark Long Only (+1 whenever tradable)",
+    )
+    axes[0, 0].plot(
+        benchmark_short_daily["TRADE_DATE"],
+        benchmark_short_daily["nav_net"],
+        color="#d62728",
+        label="Benchmark Short Only (-1 whenever tradable)",
+    )
     axes[0, 0].set_title("NAV Curve")
     axes[0, 0].legend()
     axes[0, 0].xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
     axes[0, 0].grid(alpha=0.25)
+    axes[0, 0].text(
+        0.01,
+        0.02,
+        "Long only: always hold +1 benchmark\nShort only: always hold -1 benchmark",
+        transform=axes[0, 0].transAxes,
+        fontsize=8.5,
+        va="bottom",
+        ha="left",
+        bbox={"boxstyle": "round,pad=0.35", "facecolor": "white", "alpha": 0.88, "edgecolor": "#bbbbbb"},
+    )
 
     axes[0, 1].fill_between(daily["TRADE_DATE"], daily["net_drawdown"], 0.0, color="#c44e52", alpha=0.35)
     axes[0, 1].plot(daily["TRADE_DATE"], daily["net_drawdown"], color="#8c2d04", linewidth=1.1)
@@ -529,6 +626,21 @@ def plot_backtest(
     axes[3, 1].xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
     axes[3, 1].grid(alpha=0.25)
 
+    plot_split_switch_and_return(
+        ax=axes[4, 0],
+        prediction_df=validation_prediction_df,
+        daily_df=validation_daily,
+        split_name="Validation",
+    )
+    plot_split_switch_and_return(
+        ax=axes[4, 1],
+        prediction_df=test_prediction_df,
+        daily_df=daily,
+        split_name="Test",
+    )
+    axes[4, 0].xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
+    axes[4, 1].xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
+
     plt.tight_layout()
     output_path.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(output_path, dpi=160, bbox_inches="tight")
@@ -582,6 +694,9 @@ def run_backtest(config_path: str | None = None, force_rebuild: bool | None = No
         daily=test_daily,
         benchmark_long_daily=benchmark_long_daily,
         benchmark_short_daily=benchmark_short_daily,
+        validation_prediction_df=val_pred,
+        test_prediction_df=test_pred,
+        validation_daily=val_daily,
         output_path=settings["paths"]["backtest_plot"],
     )
 

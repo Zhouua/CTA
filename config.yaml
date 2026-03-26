@@ -9,6 +9,7 @@ paths:
   report_dir: results/reports
   regime_plot: results/reports/vol_regime_split.png
   training_plot: results/reports/training_diagnostics.png
+  training_comparison_plot: results/reports/regime_model_comparison.png
   backtest_plot: results/reports/backtest_report.png
   prediction_cache: results/backtest/test_predictions.parquet
 
@@ -38,6 +39,7 @@ vol_split:
   vol_percentage: 0.70
   label_train_only: false
   regime_label_source: daily
+  split_granularity: month
   min_train_rows_per_regime: 20000
 
 model:
@@ -81,7 +83,7 @@ signal:
   flip_to_flat_first: true
   enforce_cost_filter: true
   round_trip_turnover: 2.0
-  cost_filter_multiple: 1.2
+  cost_filter_multiple: 1
   min_expected_edge: 0.0
 
 backtest:

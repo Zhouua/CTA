@@ -28,21 +28,35 @@ def _prepare_minute_data(data):
 
     df["TRADE_DATE"] = df["TDATE"].dt.normalize()
     df["MONTH"] = df["TDATE"].dt.to_period("M")
+    df["SPLIT_MONTH"] = df["MONTH"]
+    df["SPLIT_WEEK"] = df["TDATE"].dt.to_period("W")
+    df["SPLIT_DAY"] = df["TRADE_DATE"]
     return df
 
 
-def _build_month_split_map(data, train_ratio, valid_ratio, test_ratio):
+def _resolve_split_col(granularity):
+    granularity = str(granularity).lower()
+    if granularity == "month":
+        return "SPLIT_MONTH"
+    if granularity == "week":
+        return "SPLIT_WEEK"
+    if granularity == "day":
+        return "SPLIT_DAY"
+    raise ValueError("split_granularity 必须是 month/week/day 之一")
+
+
+def _build_time_split_map(data, split_col, train_ratio, valid_ratio, test_ratio):
     _validate_split_ratio(train_ratio, valid_ratio, test_ratio)
 
-    months = pd.Series(data["MONTH"].drop_duplicates().sort_values().tolist())
-    total_months = len(months)
-    train_months = int(total_months * train_ratio)
-    valid_months = int(total_months * valid_ratio)
+    periods = pd.Series(data[split_col].drop_duplicates().sort_values().tolist())
+    total_periods = len(periods)
+    train_periods = int(total_periods * train_ratio)
+    valid_periods = int(total_periods * valid_ratio)
 
-    split_map = pd.DataFrame({"MONTH": months})
+    split_map = pd.DataFrame({split_col: periods})
     split_map["DATA_SPLIT"] = "test"
-    split_map.loc[: train_months - 1, "DATA_SPLIT"] = "train"
-    split_map.loc[train_months : train_months + valid_months - 1, "DATA_SPLIT"] = "valid"
+    split_map.loc[: train_periods - 1, "DATA_SPLIT"] = "train"
+    split_map.loc[train_periods : train_periods + valid_periods - 1, "DATA_SPLIT"] = "valid"
     return split_map
 
 
@@ -124,6 +138,7 @@ def split_by_vol(
     valid_ratio=0.15,
     test_ratio=0.15,
     label_train_only=True,
+    split_granularity="month",
 ):
     if (vol_threshold is None) == (vol_percentage is None):
         raise ValueError("vol_threshold 和 vol_percentage 必须二选一")
@@ -132,8 +147,9 @@ def split_by_vol(
         raise ValueError("vol_percentage 必须在 0 和 1 之间")
 
     df = _prepare_minute_data(data)
-    split_map = _build_month_split_map(df, train_ratio, valid_ratio, test_ratio)
-    df = df.merge(split_map, on="MONTH", how="left")
+    split_col = _resolve_split_col(split_granularity)
+    split_map = _build_time_split_map(df, split_col, train_ratio, valid_ratio, test_ratio)
+    df = df.merge(split_map, on=split_col, how="left")
 
     daily_close = (
         df.groupby("TRADE_DATE", as_index=False)
@@ -230,6 +246,7 @@ def split_by_vol(
 
     merged_data.attrs["daily_cutoff"] = float(daily_cutoff)
     merged_data.attrs["monthly_cutoff"] = float(monthly_cutoff)
+    merged_data.attrs["split_granularity"] = str(split_granularity)
     daily_close.attrs["daily_cutoff"] = float(daily_cutoff)
     monthly_close.attrs["monthly_cutoff"] = float(monthly_cutoff)
     return merged_data, low_vol, high_vol, daily_close, monthly_close
@@ -435,6 +452,7 @@ def split_and_plot_by_vol(
     valid_ratio=0.15,
     test_ratio=0.15,
     label_train_only=True,
+    split_granularity="month",
     output_path=None,
     concat_output_dir=None,
 ):
@@ -447,6 +465,7 @@ def split_and_plot_by_vol(
         valid_ratio=valid_ratio,
         test_ratio=test_ratio,
         label_train_only=label_train_only,
+        split_granularity=split_granularity,
     )
     fig, axes = plot_5min_return_by_vol(
         merged_data,
