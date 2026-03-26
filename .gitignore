@@ -1,3 +1,6 @@
 /data/*
 .DS_Store
 .qoder
+.mplconfig
+__pycache__
+**/__pycache__

@@ -1,0 +1,274 @@
+{
+  "dataset": {
+    "target_col": "target_vol_norm",
+    "feature_count": 190,
+    "factor_feature_count": 153,
+    "engineered_feature_count": 35,
+    "date_range": {
+      "start": "2020-02-07T09:06:00",
+      "end": "2026-03-06T14:55:00"
+    },
+    "split_rows": {
+      "train": 334180,
+      "val": 73436,
+      "test": 74534
+    },
+    "train_regime_rows": {
+      "low_vol": 234385,
+      "high_vol": 99795
+    },
+    "regime_label_source": "daily",
+    "regime_cutoff": 0.017200915912034664,
+    "daily_vol_stats": {
+      "count": 1474.0,
+      "mean": 0.01384681176224968,
+      "median": 0.012250942423264367,
+      "std": 0.006036782949567913,
+      "min": 0.005149566532554576,
+      "p10": 0.007792515819275321,
+      "p25": 0.00938874137176553,
+      "p75": 0.016796890001941202,
+      "p90": 0.02169812391671299,
+      "max": 0.038517670913717036,
+      "daily_cutoff": 0.017200915912034664
+    },
+    "monthly_vol_stats": {
+      "count": 74.0,
+      "mean": 0.013734500100352804,
+      "median": 0.012815415318235804,
+      "std": 0.005625800088594541,
+      "min": 0.006002841250649322,
+      "p10": 0.008010194771809772,
+      "p25": 0.009291598858319771,
+      "p75": 0.01628657504792829,
+      "p90": 0.021541810780205034,
+      "max": 0.032234826088038356,
+      "monthly_cutoff": 0.017684597786944097
+    }
+  },
+  "signal_rules": {
+    "low_vol": {
+      "regime_name": "low_vol",
+      "entry_threshold": 0.00023463877518336472,
+      "exit_threshold": 8.993123412200882e-05,
+      "cost_filter_threshold": 0.00048,
+      "effective_entry_threshold": 0.00048,
+      "confirmation_bars": 2,
+      "min_hold_bars": 4,
+      "cooldown_bars": 2,
+      "allow_direct_flip": false,
+      "flip_to_flat_first": true
+    },
+    "high_vol": {
+      "regime_name": "high_vol",
+      "entry_threshold": 0.0003788834787801497,
+      "exit_threshold": 0.00012373552430395266,
+      "cost_filter_threshold": 0.00048,
+      "effective_entry_threshold": 0.00048,
+      "confirmation_bars": 2,
+      "min_hold_bars": 4,
+      "cooldown_bars": 2,
+      "allow_direct_flip": false,
+      "flip_to_flat_first": true
+    }
+  },
+  "validation_prediction_metrics": {
+    "rmse": 0.0012942933337740082,
+    "mae": 0.0008895694089958625,
+    "r2": 0.02365414089842932,
+    "directional_accuracy": 0.49336837518383353,
+    "pred_mean": -7.960707978432346e-06,
+    "pred_std": 0.00022706093495814702,
+    "target_mean": -1.2910876952148963e-05,
+    "target_std": 0.0013098780663487759,
+    "pearson_ic": 0.15494221058050112,
+    "spearman_ic": 0.15280091109489552
+  },
+  "validation_prediction_metrics_by_regime": {
+    "low_vol": {
+      "rows": 64176,
+      "metrics": {
+        "rmse": 0.0011772680731136035,
+        "mae": 0.0008271321485574858,
+        "r2": 0.027255486872265866,
+        "directional_accuracy": 0.49214659685863876,
+        "pred_mean": -8.076863271003744e-06,
+        "pred_std": 0.00020838232843108686,
+        "target_mean": -1.1842673036050634e-05,
+        "target_std": 0.0011936471664988992,
+        "pearson_ic": 0.16537846748863202,
+        "spearman_ic": 0.15695454345685142
+      }
+    },
+    "high_vol": {
+      "rows": 9260,
+      "metrics": {
+        "rmse": 0.0019182611363704812,
+        "mae": 0.0013222879431096057,
+        "r2": 0.01410996111107543,
+        "directional_accuracy": 0.5018358531317495,
+        "pred_mean": -7.155699117086542e-06,
+        "pred_std": 0.0003285187760576089,
+        "target_mean": -2.031401458924684e-05,
+        "target_std": 0.0019319393521192941,
+        "pearson_ic": 0.1266480888293476,
+        "spearman_ic": 0.1336065180053349
+      }
+    }
+  },
+  "test_prediction_metrics": {
+    "rmse": 0.0009854852647884504,
+    "mae": 0.0006771251273611174,
+    "r2": 0.037674762586792365,
+    "directional_accuracy": 0.4781307859500362,
+    "pred_mean": -2.098386124987277e-06,
+    "pred_std": 0.00018583627106224544,
+    "target_mean": 5.265277246151576e-06,
+    "target_std": 0.0010045908014842903,
+    "pearson_ic": 0.19446956064367366,
+    "spearman_ic": 0.17692529337797605
+  },
+  "test_prediction_metrics_by_regime": {
+    "low_vol": {
+      "rows": 74534,
+      "metrics": {
+        "rmse": 0.0009854852647884504,
+        "mae": 0.0006771251273611174,
+        "r2": 0.037674762586792365,
+        "directional_accuracy": 0.4781307859500362,
+        "pred_mean": -2.098386124987277e-06,
+        "pred_std": 0.00018583627106224544,
+        "target_mean": 5.265277246151576e-06,
+        "target_std": 0.0010045908014842903,
+        "pearson_ic": 0.19446956064367366,
+        "spearman_ic": 0.17692529337797605
+      }
+    },
+    "high_vol": {
+      "rows": 0,
+      "metrics": {}
+    }
+  },
+  "validation_backtest": {
+    "gross": {
+      "total_return": 0.5320127542891055,
+      "annual_return": 0.6143338332201058,
+      "sharpe": 5.265153125005089,
+      "max_drawdown": -0.014615847465539011,
+      "daily_win_rate": 0.497737556561086,
+      "annual_volatility": 0.0925355071794134,
+      "profit_factor": 5.634454393507341,
+      "max_drawdown_start": "2024-10-28",
+      "max_drawdown_end": "2024-11-01"
+    },
+    "net": {
+      "total_return": 0.37576466725861146,
+      "annual_return": 0.4313116073168264,
+      "sharpe": 4.085873576386297,
+      "max_drawdown": -0.018486057769654063,
+      "daily_win_rate": 0.4298642533936652,
+      "annual_volatility": 0.08934180841743154,
+      "profit_factor": 3.583837873594432,
+      "max_drawdown_start": "2024-10-28",
+      "max_drawdown_end": "2024-11-04"
+    },
+    "trade_count": 269,
+    "avg_daily_turnover": 2.434389140271493,
+    "total_turnover": 538.0,
+    "rebalance_count": 538,
+    "position_mix": {
+      "long_ratio": 0.02425241026199684,
+      "short_ratio": 0.024470287052671715,
+      "flat_ratio": 0.9512773026853314
+    },
+    "trade_win_rate": 0.5947955390334573,
+    "avg_holding_bars": 13.301115241635689,
+    "avg_trade_net_return": 0.0006862338836878901
+  },
+  "test_backtest": {
+    "gross": {
+      "total_return": 0.35930889534521193,
+      "annual_return": 0.40745889397593626,
+      "sharpe": 5.66694811658573,
+      "max_drawdown": -0.005750374166665351,
+      "daily_win_rate": 0.4488888888888889,
+      "annual_volatility": 0.06054812395264624,
+      "profit_factor": 6.635556477537226,
+      "max_drawdown_start": "2025-09-03",
+      "max_drawdown_end": "2025-09-05"
+    },
+    "net": {
+      "total_return": 0.255320710445323,
+      "annual_return": 0.2900629290078953,
+      "sharpe": 4.388676019055161,
+      "max_drawdown": -0.008091703208466638,
+      "daily_win_rate": 0.4,
+      "annual_volatility": 0.057976789694976244,
+      "profit_factor": 3.873535260259795,
+      "max_drawdown_start": "2025-11-06",
+      "max_drawdown_end": "2025-11-28"
+    },
+    "trade_count": 199,
+    "avg_daily_turnover": 1.768888888888889,
+    "total_turnover": 398.0,
+    "rebalance_count": 398,
+    "position_mix": {
+      "long_ratio": 0.017079453672149622,
+      "short_ratio": 0.014758365309791504,
+      "flat_ratio": 0.9681621810180588
+    },
+    "trade_win_rate": 0.5477386934673367,
+    "avg_holding_bars": 11.924623115577889,
+    "avg_trade_net_return": 0.0007787813711707098
+  },
+  "test_monthly_returns": [
+    {
+      "month": "2025-04",
+      "net_ret": 0.01275469111485461
+    },
+    {
+      "month": "2025-05",
+      "net_ret": 0.011951635794913429
+    },
+    {
+      "month": "2025-06",
+      "net_ret": 0.015480861416502734
+    },
+    {
+      "month": "2025-07",
+      "net_ret": 0.11441810725114321
+    },
+    {
+      "month": "2025-08",
+      "net_ret": 0.01430594128583551
+    },
+    {
+      "month": "2025-09",
+      "net_ret": 0.019320897847279195
+    },
+    {
+      "month": "2025-10",
+      "net_ret": 0.014783279397888371
+    },
+    {
+      "month": "2025-11",
+      "net_ret": -0.003742432236292559
+    },
+    {
+      "month": "2025-12",
+      "net_ret": 0.02388100872430332
+    },
+    {
+      "month": "2026-01",
+      "net_ret": 0.015507190642327195
+    },
+    {
+      "month": "2026-02",
+      "net_ret": -0.0029042091778566093
+    },
+    {
+      "month": "2026-03",
+      "net_ret": -0.0012045302146528325
+    }
+  ]
+}

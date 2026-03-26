@@ -1,0 +1,153 @@
+{
+  "regime_label": -1,
+  "regime_name": "low_vol",
+  "params": {
+    "objective": "regression",
+    "metric": "l2",
+    "boosting_type": "gbdt",
+    "learning_rate": 0.03,
+    "num_leaves": 63,
+    "max_depth": 6,
+    "feature_fraction": 0.8,
+    "bagging_fraction": 0.8,
+    "bagging_freq": 5,
+    "min_child_samples": 120,
+    "reg_alpha": 0.0,
+    "reg_lambda": 1.0,
+    "verbosity": -1,
+    "n_jobs": -1,
+    "seed": 42
+  },
+  "metrics": {
+    "train_rows": 234385,
+    "val_rows": 64176,
+    "test_rows": 74534,
+    "best_iteration": 103,
+    "val_metrics": {
+      "rmse": 0.0011772680731136035,
+      "mae": 0.0008271321485574858,
+      "r2": 0.027255486872265866,
+      "directional_accuracy": 0.49214659685863876,
+      "pred_mean": -8.076863271003744e-06,
+      "pred_std": 0.00020838232843108686,
+      "target_mean": -1.1842673036050634e-05,
+      "target_std": 0.0011936471664988992,
+      "pearson_ic": 0.16537846748863202,
+      "spearman_ic": 0.15695454345685142
+    },
+    "test_metrics": {
+      "rmse": 0.0009854852647884504,
+      "mae": 0.0006771251273611174,
+      "r2": 0.037674762586792365,
+      "directional_accuracy": 0.4781307859500362,
+      "pred_mean": -2.098386124987277e-06,
+      "pred_std": 0.00018583627106224544,
+      "target_mean": 5.265277246151576e-06,
+      "target_std": 0.0010045908014842903,
+      "pearson_ic": 0.19446956064367366,
+      "spearman_ic": 0.17692529337797605
+    },
+    "top_features": [
+      {
+        "feature": "daily_ret",
+        "importance_gain": 54526.60289764404,
+        "importance_split": 430
+      },
+      {
+        "feature": "ENG_TOD_SIN",
+        "importance_gain": 22494.52817630768,
+        "importance_split": 262
+      },
+      {
+        "feature": "ENG_TOD_COS",
+        "importance_gain": 17899.852611541748,
+        "importance_split": 331
+      },
+      {
+        "feature": "ENG_RV_20",
+        "importance_gain": 6960.939901351929,
+        "importance_split": 164
+      },
+      {
+        "feature": "ENG_CLOSE_TO_RANGE",
+        "importance_gain": 5900.392503738403,
+        "importance_split": 53
+      },
+      {
+        "feature": "STD10",
+        "importance_gain": 5008.638788223267,
+        "importance_split": 61
+      },
+      {
+        "feature": "ENG_WEEKDAY",
+        "importance_gain": 4835.548510551453,
+        "importance_split": 77
+      },
+      {
+        "feature": "MIN60",
+        "importance_gain": 4517.079966545105,
+        "importance_split": 36
+      },
+      {
+        "feature": "ENG_RV_60",
+        "importance_gain": 4126.691717624664,
+        "importance_split": 99
+      },
+      {
+        "feature": "CORD60",
+        "importance_gain": 3850.97407245636,
+        "importance_split": 96
+      },
+      {
+        "feature": "ENG_ATR_60",
+        "importance_gain": 3652.8493041992188,
+        "importance_split": 92
+      },
+      {
+        "feature": "KSFT2",
+        "importance_gain": 3637.859359741211,
+        "importance_split": 38
+      },
+      {
+        "feature": "ENG_ATR_20",
+        "importance_gain": 3510.843910217285,
+        "importance_split": 91
+      },
+      {
+        "feature": "daily_vol_20",
+        "importance_gain": 3034.076199531555,
+        "importance_split": 72
+      },
+      {
+        "feature": "IMXD60",
+        "importance_gain": 2822.5350856781006,
+        "importance_split": 99
+      },
+      {
+        "feature": "QTLU5",
+        "importance_gain": 2726.875873565674,
+        "importance_split": 32
+      },
+      {
+        "feature": "WVMA60",
+        "importance_gain": 2642.0316886901855,
+        "importance_split": 79
+      },
+      {
+        "feature": "ENG_POSITION_RATIO_60",
+        "importance_gain": 2634.2691473960876,
+        "importance_split": 69
+      },
+      {
+        "feature": "CORR60",
+        "importance_gain": 2611.066209793091,
+        "importance_split": 73
+      },
+      {
+        "feature": "STD30",
+        "importance_gain": 2397.9153118133545,
+        "importance_split": 73
+      }
+    ]
+  }
+}
