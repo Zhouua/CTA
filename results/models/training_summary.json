@@ -18,6 +18,7 @@
       "high_vol": 99795
     },
     "regime_label_source": "daily",
+    "split_granularity": "month",
     "regime_cutoff": 0.017200915912034664,
     "daily_vol_stats": {
       "count": 1474.0,

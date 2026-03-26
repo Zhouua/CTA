@@ -62,7 +62,7 @@ def build_model_settings(config_path: str | None = None) -> dict[str, Any]:
     paths = resolve_paths(
         config_dir,
         get_section(config, "paths"),
-        ["model_dir", "training_summary", "training_plot"],
+        ["model_dir", "training_summary", "training_plot", "training_comparison_plot"],
     )
     model_cfg = get_section(config, "model")
     return {
@@ -376,6 +376,97 @@ def plot_training_diagnostics(
     plt.close()
 
 
+def plot_regime_model_comparison(
+    validation_df: pd.DataFrame,
+    test_df: pd.DataFrame,
+    output_path: Path,
+) -> None:
+    if validation_df.empty and test_df.empty:
+        return
+
+    os.environ.setdefault("MPLCONFIGDIR", str(MPLCONFIG_DIR.resolve()))
+    import matplotlib.dates as mdates
+    import matplotlib.pyplot as plt
+
+    color_map = {"low_vol": "#7BC96F", "high_vol": "#F28B82"}
+    fig, axes = plt.subplots(2, 1, figsize=(18, 11), sharex=False)
+
+    def _plot_single(ax, df: pd.DataFrame, title: str):
+        if df.empty:
+            ax.set_axis_off()
+            return
+        daily = (
+            df.groupby("TRADE_DATE", sort=True)
+            .agg(
+                REGIME_LABEL=("REGIME_LABEL", "first"),
+                pred_return=("pred_return", "mean"),
+                future_return=("future_return", "mean"),
+            )
+            .reset_index()
+        )
+        daily["TRADE_DATE"] = pd.to_datetime(daily["TRADE_DATE"])
+        daily["REGIME_NAME"] = daily["REGIME_LABEL"].map(REGIME_NAME_MAP)
+        current_name = None
+        start_date = None
+        segments: list[tuple[pd.Timestamp, pd.Timestamp, str]] = []
+        for row in daily.itertuples(index=False):
+            regime_name = str(row.REGIME_NAME)
+            trade_date = pd.to_datetime(row.TRADE_DATE)
+            if current_name is None:
+                current_name = regime_name
+                start_date = trade_date
+                continue
+            if regime_name != current_name:
+                segments.append((start_date, trade_date, current_name))
+                current_name = regime_name
+                start_date = trade_date
+        if current_name is not None and start_date is not None:
+            segments.append((start_date, pd.to_datetime(daily["TRADE_DATE"].iloc[-1]) + pd.Timedelta(days=1), current_name))
+        for seg_start, seg_end, regime_name in segments:
+            ax.axvspan(seg_start, seg_end, color=color_map[regime_name], alpha=0.28, linewidth=0)
+
+        bar_colors = np.where(daily["future_return"] >= 0, "#4c78a8", "#c44e52")
+        ax.bar(daily["TRADE_DATE"], daily["future_return"], color=bar_colors, alpha=0.72, width=1.0, label="Actual return")
+        ax.plot(daily["TRADE_DATE"], daily["pred_return"], color="#16324F", linewidth=1.1, label="Predicted return")
+        ax.axhline(0.0, color="black", linewidth=0.8)
+        ax.set_title(title)
+        ax.grid(alpha=0.25)
+        ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
+
+        counts = daily["REGIME_NAME"].value_counts().to_dict()
+        ic_metrics = calc_prediction_metrics(df["future_return"], df["pred_return"])
+        ax.text(
+            0.01,
+            0.02,
+            (
+                f"low_vol days={int(counts.get('low_vol', 0))}, "
+                f"high_vol days={int(counts.get('high_vol', 0))}\n"
+                f"IC={float(ic_metrics.get('pearson_ic', 0.0)):.3f}, "
+                f"RankIC={float(ic_metrics.get('spearman_ic', 0.0)):.3f}, "
+                f"DA={float(ic_metrics.get('directional_accuracy', 0.0)):.3f}"
+            ),
+            transform=ax.transAxes,
+            fontsize=8.5,
+            va="bottom",
+            ha="left",
+            bbox={"boxstyle": "round,pad=0.35", "facecolor": "white", "alpha": 0.9, "edgecolor": "#bbbbbb"},
+        )
+        from matplotlib.patches import Patch
+        handles = [
+            Patch(facecolor=color_map["low_vol"], alpha=0.28, label="low_vol model active"),
+            Patch(facecolor=color_map["high_vol"], alpha=0.28, label="high_vol model active"),
+        ]
+        ax.legend(handles=handles + ax.lines[:1] + ax.containers[:1], loc="upper right", fontsize=8)
+
+    _plot_single(axes[0], validation_df, "Validation Regime Switch And Return")
+    _plot_single(axes[1], test_df, "Test Regime Switch And Return")
+
+    plt.tight_layout()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(output_path, dpi=160, bbox_inches="tight")
+    plt.close()
+
+
 def predict_dual_regime(
     df: pd.DataFrame,
     feature_cols: list[str],
@@ -464,6 +555,11 @@ def train_dual_regime_models(
         prediction_map=val_prediction_map,
         output_path=settings["paths"]["training_plot"],
         top_n=settings["feature_importance_top_n"],
+    )
+    plot_regime_model_comparison(
+        validation_df=combined_val,
+        test_df=combined_test,
+        output_path=settings["paths"]["training_comparison_plot"],
     )
 
     with settings["paths"]["training_summary"].open("w", encoding="utf-8") as f:
