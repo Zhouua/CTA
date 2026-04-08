@@ -1,0 +1,181 @@
+{
+  "macro_filter": {
+    "lag_months": 1,
+    "months_open": 40,
+    "months_total": 75,
+    "macro_strong_months": 18,
+    "inventory_strong_months": 32
+  },
+  "benchmark_backtest": {
+    "gross": {
+      "total_return": 0.46004747538997504,
+      "annual_return": 0.523301249668999,
+      "sharpe": 6.349984387588835,
+      "max_drawdown": -0.00638708501938845,
+      "daily_win_rate": 0.52,
+      "annual_volatility": 0.06662398299171184,
+      "profit_factor": 6.628711654576993,
+      "max_drawdown_start": "2025-09-03",
+      "max_drawdown_end": "2025-09-05"
+    },
+    "net": {
+      "total_return": 0.31322849426504273,
+      "annual_return": 0.35588878445445427,
+      "sharpe": 4.790879228372484,
+      "max_drawdown": -0.00846820230060985,
+      "daily_win_rate": 0.4666666666666667,
+      "annual_volatility": 0.06365136892552574,
+      "profit_factor": 3.738477217466965,
+      "max_drawdown_start": "2025-04-08",
+      "max_drawdown_end": "2025-04-23"
+    },
+    "trade_count": 265,
+    "avg_daily_turnover": 2.3555555555555556,
+    "total_turnover": 530.0,
+    "rebalance_count": 530,
+    "position_mix": {
+      "long_ratio": 0.02178871387554673,
+      "short_ratio": 0.02129229613330829,
+      "flat_ratio": 0.956918989991145
+    },
+    "trade_win_rate": 0.5660377358490566,
+    "avg_holding_bars": 12.116981132075471,
+    "avg_trade_net_return": 0.0006620167634347744
+  },
+  "filtered_backtest": {
+    "gross": {
+      "total_return": 0.2020827928198239,
+      "annual_return": 0.22735953680485177,
+      "sharpe": 3.829571987414844,
+      "max_drawdown": -0.004243941436508414,
+      "daily_win_rate": 0.1688888888888889,
+      "annual_volatility": 0.05379510148299829,
+      "profit_factor": 12.285272265520153,
+      "max_drawdown_start": "2025-04-08",
+      "max_drawdown_end": "2025-04-09"
+    },
+    "net": {
+      "total_return": 0.159587869370041,
+      "annual_return": 0.1808190854823657,
+      "sharpe": 3.28435630252474,
+      "max_drawdown": -0.00846820230060985,
+      "daily_win_rate": 0.1511111111111111,
+      "annual_volatility": 0.050489128100544796,
+      "profit_factor": 6.499093846260449,
+      "max_drawdown_start": "2025-04-08",
+      "max_drawdown_end": "2025-04-23"
+    },
+    "trade_count": 90,
+    "avg_daily_turnover": 0.8,
+    "total_turnover": 180.0,
+    "rebalance_count": 180,
+    "position_mix": {
+      "long_ratio": 0.01008935519360292,
+      "short_ratio": 0.010760189980411625,
+      "flat_ratio": 0.9791504548259855
+    },
+    "trade_win_rate": 0.6222222222222222,
+    "avg_holding_bars": 17.266666666666666,
+    "avg_trade_net_return": 0.0011548495627758935
+  },
+  "benchmark_monthly_returns": [
+    {
+      "month": "2025-04",
+      "net_ret": 0.02445590878445869
+    },
+    {
+      "month": "2025-05",
+      "net_ret": 0.014342915719382843
+    },
+    {
+      "month": "2025-06",
+      "net_ret": 0.011800336272395295
+    },
+    {
+      "month": "2025-07",
+      "net_ret": 0.1123764547623356
+    },
+    {
+      "month": "2025-08",
+      "net_ret": 0.04320778951201798
+    },
+    {
+      "month": "2025-09",
+      "net_ret": 0.021026596279182685
+    },
+    {
+      "month": "2025-10",
+      "net_ret": 0.013142930338187364
+    },
+    {
+      "month": "2025-11",
+      "net_ret": -0.0021345262754032257
+    },
+    {
+      "month": "2025-12",
+      "net_ret": 0.026657874887135113
+    },
+    {
+      "month": "2026-01",
+      "net_ret": 0.017556666844326996
+    },
+    {
+      "month": "2026-02",
+      "net_ret": -0.001654216203857417
+    },
+    {
+      "month": "2026-03",
+      "net_ret": -0.0002309398457189804
+    }
+  ],
+  "filtered_monthly_returns": [
+    {
+      "month": "2025-04",
+      "net_ret": 0.02445590878445869
+    },
+    {
+      "month": "2025-05",
+      "net_ret": 0.0
+    },
+    {
+      "month": "2025-06",
+      "net_ret": 0.0
+    },
+    {
+      "month": "2025-07",
+      "net_ret": 0.1123764547623356
+    },
+    {
+      "month": "2025-08",
+      "net_ret": 0.0
+    },
+    {
+      "month": "2025-09",
+      "net_ret": 0.0
+    },
+    {
+      "month": "2025-10",
+      "net_ret": 0.0
+    },
+    {
+      "month": "2025-11",
+      "net_ret": 0.0
+    },
+    {
+      "month": "2025-12",
+      "net_ret": 0.0
+    },
+    {
+      "month": "2026-01",
+      "net_ret": 0.017556666844326996
+    },
+    {
+      "month": "2026-02",
+      "net_ret": 0.0
+    },
+    {
+      "month": "2026-03",
+      "net_ret": 0.0
+    }
+  ]
+}
