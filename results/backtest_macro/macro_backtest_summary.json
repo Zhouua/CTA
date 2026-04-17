@@ -1,10 +1,11 @@
 {
   "macro_filter": {
     "lag_months": 1,
-    "months_open": 40,
+    "months_open": 45,
     "months_total": 75,
     "macro_strong_months": 18,
-    "inventory_strong_months": 32
+    "inventory_strong_months": 32,
+    "demand_strong_months": 16
   },
   "benchmark_backtest": {
     "gross": {
@@ -44,6 +45,78 @@
   },
   "filtered_backtest": {
     "gross": {
+      "total_return": 0.2551137249945361,
+      "annual_return": 0.2876673634149316,
+      "sharpe": 4.543050706502902,
+      "max_drawdown": -0.004712925839513549,
+      "daily_win_rate": 0.25333333333333335,
+      "annual_volatility": 0.055940448893094324,
+      "profit_factor": 9.126945323866895,
+      "max_drawdown_start": "2025-06-12",
+      "max_drawdown_end": "2025-06-16"
+    },
+    "net": {
+      "total_return": 0.19009952891717052,
+      "annual_return": 0.215391724345545,
+      "sharpe": 3.7011412792738145,
+      "max_drawdown": -0.00846820230060985,
+      "daily_win_rate": 0.23555555555555555,
+      "annual_volatility": 0.05263596318616433,
+      "profit_factor": 4.875093044532195,
+      "max_drawdown_start": "2025-04-08",
+      "max_drawdown_end": "2025-04-23"
+    },
+    "trade_count": 133,
+    "avg_daily_turnover": 1.1822222222222223,
+    "total_turnover": 266.0,
+    "rebalance_count": 266,
+    "position_mix": {
+      "long_ratio": 0.013617946172216707,
+      "short_ratio": 0.01290686129819948,
+      "flat_ratio": 0.9734751925295838
+    },
+    "trade_win_rate": 0.6090225563909775,
+    "avg_holding_bars": 14.864661654135338,
+    "avg_trade_net_return": 0.000909259886013278
+  },
+  "macro_only_backtest": {
+    "gross": {
+      "total_return": 0.0,
+      "annual_return": 0.0,
+      "sharpe": 0.0,
+      "max_drawdown": 0.0,
+      "daily_win_rate": 0.0,
+      "annual_volatility": 0.0,
+      "profit_factor": 0.0,
+      "max_drawdown_start": "2025-04-01",
+      "max_drawdown_end": "2025-04-01"
+    },
+    "net": {
+      "total_return": 0.0,
+      "annual_return": 0.0,
+      "sharpe": 0.0,
+      "max_drawdown": 0.0,
+      "daily_win_rate": 0.0,
+      "annual_volatility": 0.0,
+      "profit_factor": 0.0,
+      "max_drawdown_start": "2025-04-01",
+      "max_drawdown_end": "2025-04-01"
+    },
+    "trade_count": 0,
+    "avg_daily_turnover": 0.0,
+    "total_turnover": 0.0,
+    "rebalance_count": 0,
+    "position_mix": {
+      "long_ratio": 0.0,
+      "short_ratio": 0.0,
+      "flat_ratio": 1.0
+    },
+    "trade_win_rate": 0.0,
+    "avg_holding_bars": 0.0,
+    "avg_trade_net_return": 0.0
+  },
+  "inventory_only_backtest": {
+    "gross": {
       "total_return": 0.2020827928198239,
       "annual_return": 0.22735953680485177,
       "sharpe": 3.829571987414844,
@@ -77,6 +150,42 @@
     "trade_win_rate": 0.6222222222222222,
     "avg_holding_bars": 17.266666666666666,
     "avg_trade_net_return": 0.0011548495627758935
+  },
+  "demand_only_backtest": {
+    "gross": {
+      "total_return": 0.08386100112875283,
+      "annual_return": 0.09399507694980991,
+      "sharpe": 3.030257556979573,
+      "max_drawdown": -0.004712925839513549,
+      "daily_win_rate": 0.12444444444444444,
+      "annual_volatility": 0.029677018895093714,
+      "profit_factor": 4.877034910962422,
+      "max_drawdown_start": "2025-06-12",
+      "max_drawdown_end": "2025-06-16"
+    },
+    "net": {
+      "total_return": 0.05141190818350161,
+      "annual_return": 0.059075571248243586,
+      "sharpe": 2.030106116200019,
+      "max_drawdown": -0.00846820230060985,
+      "daily_win_rate": 0.12,
+      "annual_volatility": 0.027628334337128847,
+      "profit_factor": 2.510541410562541,
+      "max_drawdown_start": "2025-04-08",
+      "max_drawdown_end": "2025-04-23"
+    },
+    "trade_count": 76,
+    "avg_daily_turnover": 0.6755555555555556,
+    "total_turnover": 152.0,
+    "rebalance_count": 152,
+    "position_mix": {
+      "long_ratio": 0.007298682480478708,
+      "short_ratio": 0.00792926718007889,
+      "flat_ratio": 0.9847720503394424
+    },
+    "trade_win_rate": 0.5394736842105263,
+    "avg_holding_bars": 14.93421052631579,
+    "avg_trade_net_return": 0.0003821437494212677
   },
   "benchmark_monthly_returns": [
     {
@@ -135,11 +244,11 @@
     },
     {
       "month": "2025-05",
-      "net_ret": 0.0
+      "net_ret": 0.014342915719382843
     },
     {
       "month": "2025-06",
-      "net_ret": 0.0
+      "net_ret": 0.011800336272395295
     },
     {
       "month": "2025-07",

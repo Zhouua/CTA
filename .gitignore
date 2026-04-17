@@ -1,7 +1,12 @@
 /data/*
+!/data/product_registry.json
+!/data/mid_weekly/
+/data/mid_weekly/*
+!/data/mid_weekly/.gitkeep
 .DS_Store
 .qoder
 .mplconfig
 __pycache__
 **/__pycache__
 results/cache
+/results/runs/

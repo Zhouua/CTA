@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -10,10 +11,25 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config.yaml"
 
 
-def load_project_config(config_path: str | None = None) -> tuple[dict[str, Any], Path]:
+def deep_merge_dict(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    merged = deepcopy(base)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = deep_merge_dict(merged[key], value)
+        else:
+            merged[key] = deepcopy(value)
+    return merged
+
+
+def load_project_config(
+    config_path: str | None = None,
+    config_override: dict[str, Any] | None = None,
+) -> tuple[dict[str, Any], Path]:
     path = Path(config_path).expanduser().resolve() if config_path else DEFAULT_CONFIG_PATH
     with path.open("r", encoding="utf-8") as f:
         config = yaml.safe_load(f) or {}
+    if config_override:
+        config = deep_merge_dict(config, config_override)
     return config, path.parent
 
 
@@ -35,6 +51,14 @@ def resolve_paths(base_dir: Path, mapping: dict[str, Any], keys: list[str]) -> d
         if key not in mapping:
             raise KeyError(f"Missing config path key: {key}")
         resolved[key] = resolve_path(base_dir, mapping[key])
+    return resolved
+
+
+def resolve_optional_paths(base_dir: Path, mapping: dict[str, Any], keys: list[str]) -> dict[str, Path]:
+    resolved: dict[str, Path] = {}
+    for key in keys:
+        if key in mapping and mapping[key] is not None:
+            resolved[key] = resolve_path(base_dir, mapping[key])
     return resolved
 
 

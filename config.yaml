@@ -1,11 +1,16 @@
 paths:
   raw_data: data/RBZL.SHF.csv
+  product_data_dir: data/分产品1min主连
+  product_registry: data/product_registry.json
   factor_dir: data/factors
+  mid_weekly_dir: data/mid_weekly
+  product_cache_dir: results/cache/products
   merged_cache: results/cache/merged_features.parquet
   cache_meta: results/cache/merged_features_meta.json
   model_dir: results/models
   training_summary: results/models/training_summary.json
   backtest_dir: results/backtest
+  run_root: results/runs
   report_dir: results/reports
   regime_plot: results/reports/vol_regime_split.png
   training_plot: results/reports/training_diagnostics.png
@@ -29,10 +34,32 @@ data:
   cache_merged_dataset: true
   force_rebuild_cache: false
   use_engineered_features: true
+  use_mid_weekly: true
+  mid_alignment: asof_forward_fill
   engineered_windows:
     short: 5
     medium: 20
     long: 60
+
+batch_training:
+  enforce_registry_coverage: true
+  required_data_start: 2021-01-01
+  required_data_end: 2025-01-01
+
+factors:
+  runtime:
+    enabled: true
+    windows: [5, 10, 20, 30, 60]
+    lags: [0, 1, 2, 3, 4]
+    groups:
+      - price_lags
+      - kline
+      - trend
+      - volatility
+      - direction
+      - volume
+      - correlation
+    cache_generated_features: true
 
 vol_split:
   window: 20
@@ -51,6 +78,7 @@ model:
   num_boost_round: 400
   early_stopping_rounds: 50
   feature_importance_top_n: 20
+  persist_models: true
   common_params:
     objective: regression
     metric: l2

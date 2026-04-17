@@ -57,8 +57,11 @@ def _to_native(value: Any) -> Any:
     return value
 
 
-def build_model_settings(config_path: str | None = None) -> dict[str, Any]:
-    config, config_dir = load_project_config(config_path)
+def build_model_settings(
+    config_path: str | None = None,
+    config_override: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    config, config_dir = load_project_config(config_path, config_override=config_override)
     paths = resolve_paths(
         config_dir,
         get_section(config, "paths"),
@@ -73,6 +76,7 @@ def build_model_settings(config_path: str | None = None) -> dict[str, Any]:
         "num_boost_round": int(model_cfg.get("num_boost_round", 400)),
         "early_stopping_rounds": int(model_cfg.get("early_stopping_rounds", 50)),
         "feature_importance_top_n": int(model_cfg.get("feature_importance_top_n", 20)),
+        "persist_models": bool(model_cfg.get("persist_models", True)),
         "common_params": dict(model_cfg.get("common_params", {})),
         "low_vol_overrides": dict(model_cfg.get("low_vol_overrides", {})),
         "high_vol_overrides": dict(model_cfg.get("high_vol_overrides", {})),
@@ -123,6 +127,25 @@ def calc_prediction_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> dict[str,
         "target_std": float(np.std(y_true)),
         **calc_ic(y_true, y_pred),
     }
+
+
+def _build_empty_regime_split_message(
+    regime_name: str,
+    train_df: pd.DataFrame,
+    val_df: pd.DataFrame,
+    test_df: pd.DataFrame,
+) -> str:
+    empty_splits: list[str] = []
+    if train_df.empty:
+        empty_splits.append("train")
+    if val_df.empty:
+        empty_splits.append("val")
+    empty_desc = "/".join(empty_splits) if empty_splits else "train/val"
+    split_rows = f"rows_by_split=train:{len(train_df)}, val:{len(val_df)}, test:{len(test_df)}"
+    return (
+        f"Regime '{regime_name}' has empty split(s): {empty_desc} and cannot be trained safely. "
+        f"{split_rows}"
+    )
 
 
 def _build_scaler(method: str) -> RobustScaler | StandardScaler | None:
@@ -495,16 +518,22 @@ def predict_dual_regime(
 def train_dual_regime_models(
     prepared: PreparedData,
     config_path: str | None = None,
+    config_override: dict[str, Any] | None = None,
 ) -> tuple[dict[int, RegimeModelArtifact], dict[str, Any], dict[str, pd.DataFrame]]:
-    settings = build_model_settings(config_path)
+    settings = build_model_settings(config_path, config_override=config_override)
     model_dir = settings["paths"]["model_dir"]
-    model_dir.mkdir(parents=True, exist_ok=True)
+    if settings["persist_models"]:
+        model_dir.mkdir(parents=True, exist_ok=True)
 
     artifact_map: dict[int, RegimeModelArtifact] = {}
     val_prediction_map: dict[int, pd.DataFrame] = {}
     summary = {
         "dataset": prepared.metadata,
+        "feature_manifest": prepared.feature_manifest,
         "feature_cols": prepared.feature_cols,
+        "runtime_factor_cols": prepared.runtime_factor_cols,
+        "mid_weekly_cols": prepared.mid_weekly_cols,
+        "persist_models": settings["persist_models"],
         "regimes": {},
     }
 
@@ -514,9 +543,7 @@ def train_dual_regime_models(
         val_df = prepared.val_data.loc[prepared.val_data["REGIME_LABEL"] == regime_label].copy()
         test_df = prepared.test_data.loc[prepared.test_data["REGIME_LABEL"] == regime_label].copy()
         if train_df.empty or val_df.empty:
-            raise ValueError(
-                f"Regime '{regime_name}' has an empty train/val split and cannot be trained safely."
-            )
+            raise ValueError(_build_empty_regime_split_message(regime_name, train_df, val_df, test_df))
 
         params = _resolve_regime_params(settings, regime_name)
         artifact = train_single_regime_model(
@@ -543,7 +570,8 @@ def train_dual_regime_models(
             "params": params,
             "metrics": artifact.metrics,
         }
-        _save_regime_artifact(model_dir, artifact)
+        if settings["persist_models"]:
+            _save_regime_artifact(model_dir, artifact)
 
     combined_val = predict_dual_regime(prepared.val_data, prepared.feature_cols, prepared.target_col, artifact_map)
     combined_test = predict_dual_regime(prepared.test_data, prepared.feature_cols, prepared.target_col, artifact_map)
@@ -562,14 +590,20 @@ def train_dual_regime_models(
         output_path=settings["paths"]["training_comparison_plot"],
     )
 
+    settings["paths"]["training_summary"].parent.mkdir(parents=True, exist_ok=True)
     with settings["paths"]["training_summary"].open("w", encoding="utf-8") as f:
         json.dump(_to_native(summary), f, indent=2, ensure_ascii=False)
 
     return artifact_map, _to_native(summary), {"val": combined_val, "test": combined_test}
 
 
-def load_dual_regime_models(config_path: str | None = None) -> dict[int, RegimeModelArtifact]:
-    settings = build_model_settings(config_path)
+def load_dual_regime_models(
+    config_path: str | None = None,
+    config_override: dict[str, Any] | None = None,
+) -> dict[int, RegimeModelArtifact]:
+    settings = build_model_settings(config_path, config_override=config_override)
+    if not settings["persist_models"]:
+        raise ValueError("model.persist_models is false; use in-memory artifact_map instead of loading from disk.")
     model_dir = settings["paths"]["model_dir"]
     artifact_map: dict[int, RegimeModelArtifact] = {}
 

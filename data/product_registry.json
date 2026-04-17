@@ -1,0 +1,1003 @@
+[
+  {
+    "product_id": "A",
+    "instrument_code": "AZL.DCE",
+    "exchange": "DCE",
+    "raw_data_file": "AZL.DCE.csv",
+    "data_start": "2020-01-02 09:01:00",
+    "data_end": "2025-06-30 23:00:00",
+    "row_count": 448074,
+    "aliases": [
+      "AZL.DCE.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "AD",
+    "instrument_code": "ADZL.SHF",
+    "exchange": "SHF",
+    "raw_data_file": "ADZL.SHF.csv",
+    "data_start": "2025-06-09 21:00:00",
+    "data_end": "2026-04-15 21:17:00",
+    "row_count": 95520,
+    "aliases": [
+      "ADZL.SHF.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "AG",
+    "instrument_code": "AGZL.SHF",
+    "exchange": "SHF",
+    "raw_data_file": "AGZL.SHF.csv",
+    "data_start": "2020-01-01 00:00:00",
+    "data_end": "2026-04-15 21:17:00",
+    "row_count": 811854,
+    "aliases": [
+      "AGZL.SHF.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "AL",
+    "instrument_code": "ALZL.SHF",
+    "exchange": "SHF",
+    "raw_data_file": "ALZL.SHF.csv",
+    "data_start": "2020-01-01 00:00:00",
+    "data_end": "2026-04-15 21:18:00",
+    "row_count": 684145,
+    "aliases": [
+      "ALZL.SHF.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "AO",
+    "instrument_code": "AOZL.SHF",
+    "exchange": "SHF",
+    "raw_data_file": "AOZL.SHF.csv",
+    "data_start": "2023-06-16 21:00:00",
+    "data_end": "2026-04-15 21:18:00",
+    "row_count": 313977,
+    "aliases": [
+      "AOZL.SHF.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "AP",
+    "instrument_code": "APZL.CZCE",
+    "exchange": "CZCE",
+    "raw_data_file": "APZL.CZCE.csv",
+    "data_start": "2024-05-06 09:00:00",
+    "data_end": "2025-06-30 15:00:00",
+    "row_count": 63506,
+    "aliases": [
+      "APZL.CZC.csv",
+      "APZL.CZCE.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "AU",
+    "instrument_code": "AUZL.SHF",
+    "exchange": "SHF",
+    "raw_data_file": "AUZL.SHF.csv",
+    "data_start": "2020-01-01 00:00:00",
+    "data_end": "2026-04-15 21:18:00",
+    "row_count": 811855,
+    "aliases": [
+      "AUZL.SHF.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "B",
+    "instrument_code": "BZL.DCE",
+    "exchange": "DCE",
+    "raw_data_file": "BZL.DCE.csv",
+    "data_start": "2020-01-02 09:01:00",
+    "data_end": "2025-06-30 23:00:00",
+    "row_count": 448074,
+    "aliases": [
+      "BZL.DCE.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "BB",
+    "instrument_code": "BBZL.DCE",
+    "exchange": "DCE",
+    "raw_data_file": "BBZL.DCE.csv",
+    "data_start": "2020-01-02 09:00:00",
+    "data_end": "2025-06-30 15:00:00",
+    "row_count": 300354,
+    "aliases": [
+      "BBZL.DCE.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "BR",
+    "instrument_code": "BRZL.SHF",
+    "exchange": "SHF",
+    "raw_data_file": "BRZL.SHF.csv",
+    "data_start": "2023-07-27 21:00:00",
+    "data_end": "2026-04-15 21:18:00",
+    "row_count": 224955,
+    "aliases": [
+      "BRZL.SHF.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "BU",
+    "instrument_code": "BUZL.SHF",
+    "exchange": "SHF",
+    "raw_data_file": "BUZL.SHF.csv",
+    "data_start": "2020-01-02 09:01:00",
+    "data_end": "2026-01-30 23:00:00",
+    "row_count": 498350,
+    "aliases": [
+      "BUZL.SHF.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "C",
+    "instrument_code": "CZL.DCE",
+    "exchange": "DCE",
+    "raw_data_file": "CZL.DCE.csv",
+    "data_start": "2020-01-02 09:01:00",
+    "data_end": "2025-06-30 23:00:00",
+    "row_count": 448074,
+    "aliases": [
+      "CZL.DCE.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "CF",
+    "instrument_code": "CFZL.CZCE",
+    "exchange": "CZCE",
+    "raw_data_file": "CFZL.CZCE.csv",
+    "data_start": "2024-05-06 09:00:00",
+    "data_end": "2025-06-30 23:00:00",
+    "row_count": 96267,
+    "aliases": [
+      "CFZL.CZC.csv",
+      "CFZL.CZCE.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "CJ",
+    "instrument_code": "CJZL.CZCE",
+    "exchange": "CZCE",
+    "raw_data_file": "CJZL.CZCE.csv",
+    "data_start": "2024-05-06 09:00:00",
+    "data_end": "2025-06-30 15:00:00",
+    "row_count": 63506,
+    "aliases": [
+      "CJZL.CZC.csv",
+      "CJZL.CZCE.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "CS",
+    "instrument_code": "CSZL.DCE",
+    "exchange": "DCE",
+    "raw_data_file": "CSZL.DCE.csv",
+    "data_start": "2020-01-02 09:01:00",
+    "data_end": "2025-06-30 23:00:00",
+    "row_count": 448074,
+    "aliases": [
+      "CSZL.DCE.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "CU",
+    "instrument_code": "CUZL.SHF",
+    "exchange": "SHF",
+    "raw_data_file": "CUZL.SHF.csv",
+    "data_start": "2020-01-01 00:00:00",
+    "data_end": "2025-06-30 23:59:00",
+    "row_count": 595794,
+    "aliases": [
+      "CUZL.SHF.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "CY",
+    "instrument_code": "CYZL.CZCE",
+    "exchange": "CZCE",
+    "raw_data_file": "CYZL.CZCE.csv",
+    "data_start": "2024-05-06 09:00:00",
+    "data_end": "2025-06-30 23:00:00",
+    "row_count": 96267,
+    "aliases": [
+      "CYZL.CZC.csv",
+      "CYZL.CZCE.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "EB",
+    "instrument_code": "EBZL.DCE",
+    "exchange": "DCE",
+    "raw_data_file": "EBZL.DCE.csv",
+    "data_start": "2020-01-02 09:01:00",
+    "data_end": "2025-06-30 23:00:00",
+    "row_count": 448074,
+    "aliases": [
+      "EBZL.DCE.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "EG",
+    "instrument_code": "EGZL.DCE",
+    "exchange": "DCE",
+    "raw_data_file": "EGZL.DCE.csv",
+    "data_start": "2020-01-02 09:01:00",
+    "data_end": "2025-06-30 23:00:00",
+    "row_count": 448074,
+    "aliases": [
+      "EGZL.DCE.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "FB",
+    "instrument_code": "FBZL.DCE",
+    "exchange": "DCE",
+    "raw_data_file": "FBZL.DCE.csv",
+    "data_start": "2020-01-02 09:00:00",
+    "data_end": "2025-06-30 15:00:00",
+    "row_count": 300354,
+    "aliases": [
+      "FBZL.DCE.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "FG",
+    "instrument_code": "FGZL.CZCE",
+    "exchange": "CZCE",
+    "raw_data_file": "FGZL.CZCE.csv",
+    "data_start": "2024-05-06 09:00:00",
+    "data_end": "2025-06-30 23:00:00",
+    "row_count": 96267,
+    "aliases": [
+      "FGZL.CZC.csv",
+      "FGZL.CZCE.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "FU",
+    "instrument_code": "FUZL.SHF",
+    "exchange": "SHF",
+    "raw_data_file": "FUZL.SHF.csv",
+    "data_start": "2020-01-02 09:01:00",
+    "data_end": "2026-04-07 14:59:00",
+    "row_count": 511828,
+    "aliases": [
+      "FUZL.SHF.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "HC",
+    "instrument_code": "HCZL.SHF",
+    "exchange": "SHF",
+    "raw_data_file": "HCZL.SHF.csv",
+    "data_start": "2020-01-02 09:01:00",
+    "data_end": "2025-06-30 23:00:00",
+    "row_count": 448074,
+    "aliases": [
+      "HCZL.SHF.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "J",
+    "instrument_code": "JZL.DCE",
+    "exchange": "DCE",
+    "raw_data_file": "JZL.DCE.csv",
+    "data_start": "2020-01-02 09:01:00",
+    "data_end": "2025-06-30 23:00:00",
+    "row_count": 448074,
+    "aliases": [
+      "JZL.DCE.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "JD",
+    "instrument_code": "JDZL.DCE",
+    "exchange": "DCE",
+    "raw_data_file": "JDZL.DCE.csv",
+    "data_start": "2020-01-02 09:00:00",
+    "data_end": "2025-06-30 15:00:00",
+    "row_count": 300354,
+    "aliases": [
+      "JDZL.DCE.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "JM",
+    "instrument_code": "JMZL.DCE",
+    "exchange": "DCE",
+    "raw_data_file": "JMZL.DCE.csv",
+    "data_start": "2020-01-02 09:01:00",
+    "data_end": "2025-06-30 23:00:00",
+    "row_count": 448074,
+    "aliases": [
+      "JMZL.DCE.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "JR",
+    "instrument_code": "JRZL.CZCE",
+    "exchange": "CZCE",
+    "raw_data_file": "JRZL.CZCE.csv",
+    "data_start": "2024-05-06 09:00:00",
+    "data_end": "2025-06-30 15:00:00",
+    "row_count": 63506,
+    "aliases": [
+      "JRZL.CZC.csv",
+      "JRZL.CZCE.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "L",
+    "instrument_code": "LZL.DCE",
+    "exchange": "DCE",
+    "raw_data_file": "LZL.DCE.csv",
+    "data_start": "2020-01-02 09:01:00",
+    "data_end": "2025-06-30 23:00:00",
+    "row_count": 448074,
+    "aliases": [
+      "LZL.DCE.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "LG",
+    "instrument_code": "LGZL.DCE",
+    "exchange": "DCE",
+    "raw_data_file": "LGZL.DCE.csv",
+    "data_start": "2024-11-18 09:00:00",
+    "data_end": "2025-06-30 15:00:00",
+    "row_count": 33674,
+    "aliases": [
+      "LGZL.DCE.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "LH",
+    "instrument_code": "LHZL.DCE",
+    "exchange": "DCE",
+    "raw_data_file": "LHZL.DCE.csv",
+    "data_start": "2021-01-08 09:00:00",
+    "data_end": "2025-06-30 15:00:00",
+    "row_count": 244532,
+    "aliases": [
+      "LHZL.DCE.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "LR",
+    "instrument_code": "LRZL.CZCE",
+    "exchange": "CZCE",
+    "raw_data_file": "LRZL.CZCE.csv",
+    "data_start": "2024-05-06 09:00:00",
+    "data_end": "2025-06-30 15:00:00",
+    "row_count": 63506,
+    "aliases": [
+      "LRZL.CZC.csv",
+      "LRZL.CZCE.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "M",
+    "instrument_code": "MZL.DCE",
+    "exchange": "DCE",
+    "raw_data_file": "MZL.DCE.csv",
+    "data_start": "2020-01-02 09:01:00",
+    "data_end": "2025-06-30 23:00:00",
+    "row_count": 448074,
+    "aliases": [
+      "MZL.DCE.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "MA",
+    "instrument_code": "MAZL.CZCE",
+    "exchange": "CZCE",
+    "raw_data_file": "MAZL.CZCE.csv",
+    "data_start": "2024-05-06 09:00:00",
+    "data_end": "2025-06-30 23:00:00",
+    "row_count": 96267,
+    "aliases": [
+      "MAZL.CZC.csv",
+      "MAZL.CZCE.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "OI",
+    "instrument_code": "OIZL.CZCE",
+    "exchange": "CZCE",
+    "raw_data_file": "OIZL.CZCE.csv",
+    "data_start": "2024-05-06 09:00:00",
+    "data_end": "2025-06-30 23:00:00",
+    "row_count": 96267,
+    "aliases": [
+      "OIZL.CZC.csv",
+      "OIZL.CZCE.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "P",
+    "instrument_code": "PZL.DCE",
+    "exchange": "DCE",
+    "raw_data_file": "PZL.DCE.csv",
+    "data_start": "2020-01-02 09:01:00",
+    "data_end": "2025-06-30 23:00:00",
+    "row_count": 448074,
+    "aliases": [
+      "PZL.DCE.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "PB",
+    "instrument_code": "PBZL.SHF",
+    "exchange": "SHF",
+    "raw_data_file": "PBZL.SHF.csv",
+    "data_start": "2020-01-01 00:00:00",
+    "data_end": "2025-06-30 23:59:00",
+    "row_count": 595794,
+    "aliases": [
+      "PBZL.SHF.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "PF",
+    "instrument_code": "PFZL.CZCE",
+    "exchange": "CZCE",
+    "raw_data_file": "PFZL.CZCE.csv",
+    "data_start": "2024-05-06 09:00:00",
+    "data_end": "2025-06-30 23:00:00",
+    "row_count": 96267,
+    "aliases": [
+      "PFZL.CZC.csv",
+      "PFZL.CZCE.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "PG",
+    "instrument_code": "PGZL.DCE",
+    "exchange": "DCE",
+    "raw_data_file": "PGZL.DCE.csv",
+    "data_start": "2020-03-30 09:00:00",
+    "data_end": "2025-06-30 23:00:00",
+    "row_count": 433619,
+    "aliases": [
+      "PGZL.DCE.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "PK",
+    "instrument_code": "PKZL.CZCE",
+    "exchange": "CZCE",
+    "raw_data_file": "PKZL.CZCE.csv",
+    "data_start": "2024-05-06 09:00:00",
+    "data_end": "2025-06-30 15:00:00",
+    "row_count": 63506,
+    "aliases": [
+      "PKZL.CZC.csv",
+      "PKZL.CZCE.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "PM",
+    "instrument_code": "PMZL.CZCE",
+    "exchange": "CZCE",
+    "raw_data_file": "PMZL.CZCE.csv",
+    "data_start": "2024-05-06 09:00:00",
+    "data_end": "2025-06-30 15:00:00",
+    "row_count": 63506,
+    "aliases": [
+      "PMZL.CZC.csv",
+      "PMZL.CZCE.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "PP",
+    "instrument_code": "PPZL.DCE",
+    "exchange": "DCE",
+    "raw_data_file": "PPZL.DCE.csv",
+    "data_start": "2020-01-02 09:01:00",
+    "data_end": "2025-06-30 23:00:00",
+    "row_count": 448074,
+    "aliases": [
+      "PPZL.DCE.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "PR",
+    "instrument_code": "PRZL.CZCE",
+    "exchange": "CZCE",
+    "raw_data_file": "PRZL.CZCE.csv",
+    "data_start": "2024-08-29 21:00:00",
+    "data_end": "2025-06-30 23:00:00",
+    "row_count": 67789,
+    "aliases": [
+      "PRZL.CZC.csv",
+      "PRZL.CZCE.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "PX",
+    "instrument_code": "PXZL.CZCE",
+    "exchange": "CZCE",
+    "raw_data_file": "PXZL.CZCE.csv",
+    "data_start": "2024-05-06 09:00:00",
+    "data_end": "2025-06-30 23:00:00",
+    "row_count": 96267,
+    "aliases": [
+      "PXZL.CZC.csv",
+      "PXZL.CZCE.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "RB",
+    "instrument_code": "RBZL.SHF",
+    "exchange": "SHF",
+    "raw_data_file": "RBZL.SHF.csv",
+    "data_start": "2020-01-02 09:01:00",
+    "data_end": "2026-03-06 15:00:00",
+    "row_count": 504683,
+    "aliases": [
+      "RBZL.SHF.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "RI",
+    "instrument_code": "RIZL.CZCE",
+    "exchange": "CZCE",
+    "raw_data_file": "RIZL.CZCE.csv",
+    "data_start": "2024-05-06 09:00:00",
+    "data_end": "2025-06-30 15:00:00",
+    "row_count": 63506,
+    "aliases": [
+      "RIZL.CZC.csv",
+      "RIZL.CZCE.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "RM",
+    "instrument_code": "RMZL.CZCE",
+    "exchange": "CZCE",
+    "raw_data_file": "RMZL.CZCE.csv",
+    "data_start": "2024-05-06 09:00:00",
+    "data_end": "2025-06-30 23:00:00",
+    "row_count": 96267,
+    "aliases": [
+      "RMZL.CZC.csv",
+      "RMZL.CZCE.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "RR",
+    "instrument_code": "RRZL.DCE",
+    "exchange": "DCE",
+    "raw_data_file": "RRZL.DCE.csv",
+    "data_start": "2020-01-02 09:01:00",
+    "data_end": "2025-06-30 23:00:00",
+    "row_count": 448074,
+    "aliases": [
+      "RRZL.DCE.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "RS",
+    "instrument_code": "RSZL.CZCE",
+    "exchange": "CZCE",
+    "raw_data_file": "RSZL.CZCE.csv",
+    "data_start": "2024-05-06 09:00:00",
+    "data_end": "2025-06-30 15:00:00",
+    "row_count": 63506,
+    "aliases": [
+      "RSZL.CZC.csv",
+      "RSZL.CZCE.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "RU",
+    "instrument_code": "RUZL.SHF",
+    "exchange": "SHF",
+    "raw_data_file": "RUZL.SHF.csv",
+    "data_start": "2020-01-02 09:01:00",
+    "data_end": "2025-06-30 23:00:00",
+    "row_count": 448074,
+    "aliases": [
+      "RUZL.SHF.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "SA",
+    "instrument_code": "SAZL.CZCE",
+    "exchange": "CZCE",
+    "raw_data_file": "SAZL.CZCE.csv",
+    "data_start": "2024-05-06 09:00:00",
+    "data_end": "2025-06-30 23:00:00",
+    "row_count": 96267,
+    "aliases": [
+      "SAZL.CZC.csv",
+      "SAZL.CZCE.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "SF",
+    "instrument_code": "SFZL.CZCE",
+    "exchange": "CZCE",
+    "raw_data_file": "SFZL.CZCE.csv",
+    "data_start": "2024-05-06 09:00:00",
+    "data_end": "2025-06-30 15:00:00",
+    "row_count": 63506,
+    "aliases": [
+      "SFZL.CZC.csv",
+      "SFZL.CZCE.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "SH",
+    "instrument_code": "SHZL.CZCE",
+    "exchange": "CZCE",
+    "raw_data_file": "SHZL.CZCE.csv",
+    "data_start": "2024-05-06 09:00:00",
+    "data_end": "2025-06-30 23:00:00",
+    "row_count": 96267,
+    "aliases": [
+      "SHZL.CZC.csv",
+      "SHZL.CZCE.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "SM",
+    "instrument_code": "SMZL.CZCE",
+    "exchange": "CZCE",
+    "raw_data_file": "SMZL.CZCE.csv",
+    "data_start": "2024-05-06 09:00:00",
+    "data_end": "2025-06-30 15:00:00",
+    "row_count": 63506,
+    "aliases": [
+      "SMZL.CZC.csv",
+      "SMZL.CZCE.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "SN",
+    "instrument_code": "SNZL.SHF",
+    "exchange": "SHF",
+    "raw_data_file": "SNZL.SHF.csv",
+    "data_start": "2020-01-01 00:00:00",
+    "data_end": "2025-06-30 23:59:00",
+    "row_count": 595794,
+    "aliases": [
+      "SNZL.SHF.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "SP",
+    "instrument_code": "SPZL.SHF",
+    "exchange": "SHF",
+    "raw_data_file": "SPZL.SHF.csv",
+    "data_start": "2020-01-02 09:01:00",
+    "data_end": "2025-06-30 23:00:00",
+    "row_count": 448074,
+    "aliases": [
+      "SPZL.SHF.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "SR",
+    "instrument_code": "SRZL.CZCE",
+    "exchange": "CZCE",
+    "raw_data_file": "SRZL.CZCE.csv",
+    "data_start": "2024-05-06 09:00:00",
+    "data_end": "2025-06-30 23:00:00",
+    "row_count": 96267,
+    "aliases": [
+      "SRZL.CZC.csv",
+      "SRZL.CZCE.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "SS",
+    "instrument_code": "SSZL.SHF",
+    "exchange": "SHF",
+    "raw_data_file": "SSZL.SHF.csv",
+    "data_start": "2020-01-01 00:00:00",
+    "data_end": "2025-06-30 23:59:00",
+    "row_count": 595794,
+    "aliases": [
+      "SSZL.SHF.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "TA",
+    "instrument_code": "TAZL.CZCE",
+    "exchange": "CZCE",
+    "raw_data_file": "TAZL.CZCE.csv",
+    "data_start": "2024-05-06 09:00:00",
+    "data_end": "2025-06-30 23:00:00",
+    "row_count": 96267,
+    "aliases": [
+      "TAZL.CZC.csv",
+      "TAZL.CZCE.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "UR",
+    "instrument_code": "URZL.CZCE",
+    "exchange": "CZCE",
+    "raw_data_file": "URZL.CZCE.csv",
+    "data_start": "2024-05-06 09:00:00",
+    "data_end": "2025-06-30 15:00:00",
+    "row_count": 63506,
+    "aliases": [
+      "URZL.CZC.csv",
+      "URZL.CZCE.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "V",
+    "instrument_code": "VZL.DCE",
+    "exchange": "DCE",
+    "raw_data_file": "VZL.DCE.csv",
+    "data_start": "2020-01-02 09:01:00",
+    "data_end": "2025-06-30 23:00:00",
+    "row_count": 448074,
+    "aliases": [
+      "VZL.DCE.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "WH",
+    "instrument_code": "WHZL.CZCE",
+    "exchange": "CZCE",
+    "raw_data_file": "WHZL.CZCE.csv",
+    "data_start": "2024-05-06 09:00:00",
+    "data_end": "2025-06-30 15:00:00",
+    "row_count": 63506,
+    "aliases": [
+      "WHZL.CZC.csv",
+      "WHZL.CZCE.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "WR",
+    "instrument_code": "WRZL.SHF",
+    "exchange": "SHF",
+    "raw_data_file": "WRZL.SHF.csv",
+    "data_start": "2020-01-02 09:00:00",
+    "data_end": "2025-06-30 15:00:00",
+    "row_count": 300354,
+    "aliases": [
+      "WRZL.SHF.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "Y",
+    "instrument_code": "YZL.DCE",
+    "exchange": "DCE",
+    "raw_data_file": "YZL.DCE.csv",
+    "data_start": "2020-01-02 09:01:00",
+    "data_end": "2025-06-30 23:00:00",
+    "row_count": 448074,
+    "aliases": [
+      "YZL.DCE.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "ZC",
+    "instrument_code": "ZCZL.CZCE",
+    "exchange": "CZCE",
+    "raw_data_file": "ZCZL.CZCE.csv",
+    "data_start": "2024-05-06 09:00:00",
+    "data_end": "2025-06-30 23:00:00",
+    "row_count": 95921,
+    "aliases": [
+      "ZCZL.CZC.csv",
+      "ZCZL.CZCE.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "ZN",
+    "instrument_code": "ZNZL.SHF",
+    "exchange": "SHF",
+    "raw_data_file": "ZNZL.SHF.csv",
+    "data_start": "2020-01-01 00:00:00",
+    "data_end": "2025-06-30 23:59:00",
+    "row_count": 595794,
+    "aliases": [
+      "ZNZL.SHF.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  }
+]
