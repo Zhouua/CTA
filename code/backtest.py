@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -22,11 +23,27 @@ if PROJECT_ROOT_STR not in sys.path:
     sys.path.insert(0, PROJECT_ROOT_STR)
 
 from config_utils import get_section, load_project_config, resolve_paths
-from dataset import REGIME_NAME_MAP, prepare_data
-from modeling import calc_prediction_metrics, load_dual_regime_models, predict_dual_regime
+from dataset import PreparedData, REGIME_NAME_MAP, prepare_data
+from modeling import RegimeModelArtifact, calc_prediction_metrics, load_dual_regime_models, predict_dual_regime
 
 
 MPLCONFIG_DIR = PROJECT_ROOT / ".mplconfig"
+
+
+@dataclass
+class BacktestArtifacts:
+    summary: dict[str, Any]
+    prepared: PreparedData
+    val_pred: pd.DataFrame
+    test_pred: pd.DataFrame
+    val_position: pd.DataFrame
+    test_position: pd.DataFrame
+    val_pnl: pd.DataFrame
+    test_pnl: pd.DataFrame
+    val_daily: pd.DataFrame
+    test_daily: pd.DataFrame
+    benchmark_long_daily: pd.DataFrame
+    benchmark_short_daily: pd.DataFrame
 
 
 def _to_native(value: Any) -> Any:
@@ -43,8 +60,11 @@ def _to_native(value: Any) -> Any:
     return value
 
 
-def build_backtest_settings(config_path: str | None = None) -> dict[str, Any]:
-    config, config_dir = load_project_config(config_path)
+def build_backtest_settings(
+    config_path: str | None = None,
+    config_override: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    config, config_dir = load_project_config(config_path, config_override=config_override)
     paths = resolve_paths(
         config_dir,
         get_section(config, "paths"),
@@ -647,12 +667,11 @@ def plot_backtest(
     plt.close()
 
 
-def run_backtest(config_path: str | None = None, force_rebuild: bool | None = None) -> dict[str, Any]:
-    settings = build_backtest_settings(config_path)
-    settings["paths"]["backtest_dir"].mkdir(parents=True, exist_ok=True)
-
-    prepared = prepare_data(config_path=config_path, force_rebuild=force_rebuild)
-    artifact_map = load_dual_regime_models(config_path)
+def execute_backtest(
+    prepared: PreparedData,
+    artifact_map: dict[int, RegimeModelArtifact],
+    settings: dict[str, Any],
+) -> BacktestArtifacts:
     val_pred = predict_dual_regime(prepared.val_data, prepared.feature_cols, prepared.target_col, artifact_map)
     test_pred = predict_dual_regime(prepared.test_data, prepared.feature_cols, prepared.target_col, artifact_map)
 
@@ -689,19 +708,9 @@ def run_backtest(config_path: str | None = None, force_rebuild: bool | None = No
         hold_to_next_bar=settings["hold_to_next_bar"],
     )
 
-    plot_backtest(
-        pnl_df=test_pnl,
-        daily=test_daily,
-        benchmark_long_daily=benchmark_long_daily,
-        benchmark_short_daily=benchmark_short_daily,
-        validation_prediction_df=val_pred,
-        test_prediction_df=test_pred,
-        validation_daily=val_daily,
-        output_path=settings["paths"]["backtest_plot"],
-    )
-
     summary = {
         "dataset": prepared.metadata,
+        "feature_manifest": prepared.feature_manifest,
         "signal_rules": {REGIME_NAME_MAP[key]: value for key, value in rule_map.items()},
         "validation_prediction_metrics": calc_prediction_metrics(val_pred["future_return"], val_pred["pred_return"]),
         "validation_prediction_metrics_by_regime": summarize_regime_predictions(val_pred),
@@ -712,14 +721,56 @@ def run_backtest(config_path: str | None = None, force_rebuild: bool | None = No
         "test_monthly_returns": build_monthly_returns(test_daily).to_dict(orient="records"),
     }
 
+    return BacktestArtifacts(
+        summary=_to_native(summary),
+        prepared=prepared,
+        val_pred=val_pred,
+        test_pred=test_pred,
+        val_position=val_position,
+        test_position=test_position,
+        val_pnl=val_pnl,
+        test_pnl=test_pnl,
+        val_daily=val_daily,
+        test_daily=test_daily,
+        benchmark_long_daily=benchmark_long_daily,
+        benchmark_short_daily=benchmark_short_daily,
+    )
+
+
+def write_backtest_outputs(artifacts: BacktestArtifacts, settings: dict[str, Any]) -> None:
+    settings["paths"]["backtest_dir"].mkdir(parents=True, exist_ok=True)
+    plot_backtest(
+        pnl_df=artifacts.test_pnl,
+        daily=artifacts.test_daily,
+        benchmark_long_daily=artifacts.benchmark_long_daily,
+        benchmark_short_daily=artifacts.benchmark_short_daily,
+        validation_prediction_df=artifacts.val_pred,
+        test_prediction_df=artifacts.test_pred,
+        validation_daily=artifacts.val_daily,
+        output_path=settings["paths"]["backtest_plot"],
+    )
+
     summary_path = settings["paths"]["backtest_dir"] / "backtest_summary.json"
     with summary_path.open("w", encoding="utf-8") as f:
-        json.dump(_to_native(summary), f, indent=2, ensure_ascii=False)
+        json.dump(artifacts.summary, f, indent=2, ensure_ascii=False)
 
     if settings["save_prediction_table"]:
-        test_position.to_parquet(settings["paths"]["prediction_cache"], index=False)
+        artifacts.test_position.to_parquet(settings["paths"]["prediction_cache"], index=False)
 
-    return _to_native(summary)
+
+def run_backtest(
+    config_path: str | None = None,
+    force_rebuild: bool | None = None,
+    prepared: PreparedData | None = None,
+    artifact_map: dict[int, RegimeModelArtifact] | None = None,
+    config_override: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    settings = build_backtest_settings(config_path, config_override=config_override)
+    prepared = prepared or prepare_data(config_path=config_path, force_rebuild=force_rebuild, config_override=config_override)
+    artifact_map = artifact_map or load_dual_regime_models(config_path, config_override=config_override)
+    artifacts = execute_backtest(prepared=prepared, artifact_map=artifact_map, settings=settings)
+    write_backtest_outputs(artifacts, settings)
+    return artifacts.summary
 
 
 def build_arg_parser() -> argparse.ArgumentParser:

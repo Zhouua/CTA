@@ -1,10 +1,11 @@
 {
   "macro_filter": {
     "lag_months": 1,
-    "months_open": 40,
+    "months_open": 45,
     "months_total": 75,
     "macro_strong_months": 18,
-    "inventory_strong_months": 32
+    "inventory_strong_months": 32,
+    "demand_strong_months": 16
   },
   "benchmark_backtest": {
     "gross": {
@@ -44,39 +45,147 @@
   },
   "filtered_backtest": {
     "gross": {
-      "total_return": 1049.9995589443356,
-      "annual_return": 2.2544939541541074,
-      "sharpe": 6.69034000398383,
+      "total_return": 1537.6412822373338,
+      "annual_return": 2.4718364404899416,
+      "sharpe": 7.018027924313687,
       "max_drawdown": -0.006610066390624891,
-      "daily_win_rate": 0.3989145183175034,
-      "annual_volatility": 0.17911285067918073,
-      "profit_factor": 70.5557262128838,
+      "daily_win_rate": 0.44301221166892807,
+      "annual_volatility": 0.1800294272948696,
+      "profit_factor": 63.84764605998163,
       "max_drawdown_start": "2021-02-02",
       "max_drawdown_end": "2021-02-08"
     },
     "net": {
-      "total_return": 513.5859859344441,
-      "annual_return": 1.8832408902631128,
-      "sharpe": 6.343987438507767,
-      "max_drawdown": -0.011018408217155273,
-      "daily_win_rate": 0.38331071913161463,
-      "annual_volatility": 0.16945897398144694,
-      "profit_factor": 42.0391754988253,
+      "total_return": 708.4820469966146,
+      "annual_return": 2.0446560001717073,
+      "sharpe": 6.629176511711447,
+      "max_drawdown": -0.011018408217155828,
+      "daily_win_rate": 0.4260515603799186,
+      "annual_volatility": 0.17044700819634775,
+      "profit_factor": 37.75603628150825,
       "max_drawdown_start": "2024-12-18",
       "max_drawdown_end": "2025-01-17"
     },
-    "trade_count": 1786,
-    "avg_daily_turnover": 2.423337856173677,
-    "total_turnover": 3572.0,
-    "rebalance_count": 3572,
+    "trade_count": 1936,
+    "avg_daily_turnover": 2.626865671641791,
+    "total_turnover": 3872.0,
+    "rebalance_count": 3872,
     "position_mix": {
-      "long_ratio": 0.03606553976978119,
-      "short_ratio": 0.030979985481696566,
-      "flat_ratio": 0.9329544747485222
+      "long_ratio": 0.03857098413356839,
+      "short_ratio": 0.03343565280514363,
+      "flat_ratio": 0.927993363061288
     },
-    "trade_win_rate": 0.7458006718924972,
-    "avg_holding_bars": 18.0996640537514,
-    "avg_trade_net_return": 0.0027683500585640643
+    "trade_win_rate": 0.7396694214876033,
+    "avg_holding_bars": 17.93285123966942,
+    "avg_trade_net_return": 0.0026830094793072806
+  },
+  "macro_only_backtest": {
+    "gross": {
+      "total_return": 221.81135943643233,
+      "annual_return": 1.5016437459297771,
+      "sharpe": 5.37756107992282,
+      "max_drawdown": -0.00661006639062478,
+      "daily_win_rate": 0.20963364993215738,
+      "annual_volatility": 0.17352815466702176,
+      "profit_factor": 156.3643059992278,
+      "max_drawdown_start": "2021-02-02",
+      "max_drawdown_end": "2021-02-08"
+    },
+    "net": {
+      "total_return": 138.1741840165609,
+      "annual_return": 1.3097315863860874,
+      "sharpe": 5.199684760915787,
+      "max_drawdown": -0.008991303341905343,
+      "daily_win_rate": 0.20420624151967434,
+      "annual_volatility": 0.16375616783597907,
+      "profit_factor": 96.18010245703378,
+      "max_drawdown_start": "2021-02-02",
+      "max_drawdown_end": "2021-02-08"
+    },
+    "trade_count": 1177,
+    "avg_daily_turnover": 1.5970149253731343,
+    "total_turnover": 2354.0,
+    "rebalance_count": 2354,
+    "position_mix": {
+      "long_ratio": 0.025572954474748524,
+      "short_ratio": 0.022575961837602406,
+      "flat_ratio": 0.951851083687649
+    },
+    "trade_win_rate": 0.7706032285471538,
+    "avg_holding_bars": 19.723874256584537,
+    "avg_trade_net_return": 0.003361942720002264
+  },
+  "inventory_only_backtest": {
+    "gross": {
+      "total_return": 130.61433635510738,
+      "annual_return": 1.2879557734056601,
+      "sharpe": 5.620789357868778,
+      "max_drawdown": -0.006610066390624891,
+      "daily_win_rate": 0.3100407055630936,
+      "annual_volatility": 0.14941867672436013,
+      "profit_factor": 56.845309206054225,
+      "max_drawdown_start": "2021-02-02",
+      "max_drawdown_end": "2021-02-08"
+    },
+    "net": {
+      "total_return": 76.20448311052064,
+      "annual_return": 1.0900489871559684,
+      "sharpe": 5.305248496746524,
+      "max_drawdown": -0.011018408217155717,
+      "daily_win_rate": 0.2971506105834464,
+      "annual_volatility": 0.14097651496498997,
+      "profit_factor": 33.8373902575805,
+      "max_drawdown_start": "2024-12-18",
+      "max_drawdown_end": "2025-01-17"
+    },
+    "trade_count": 1334,
+    "avg_daily_turnover": 1.8100407055630936,
+    "total_turnover": 2668.0,
+    "rebalance_count": 2668,
+    "position_mix": {
+      "long_ratio": 0.02747070413771648,
+      "short_ratio": 0.021134501711085763,
+      "flat_ratio": 0.9513947941511978
+    },
+    "trade_win_rate": 0.7346326836581709,
+    "avg_holding_bars": 17.567466266866568,
+    "avg_trade_net_return": 0.002592777695889767
+  },
+  "demand_only_backtest": {
+    "gross": {
+      "total_return": 25.482455443531997,
+      "annual_return": 0.743183019728098,
+      "sharpe": 4.254752701267561,
+      "max_drawdown": -0.004712925839513549,
+      "daily_win_rate": 0.16350067842605157,
+      "annual_volatility": 0.13275858113524175,
+      "profit_factor": 62.896608710514585,
+      "max_drawdown_start": "2025-06-12",
+      "max_drawdown_end": "2025-06-16"
+    },
+    "net": {
+      "total_return": 17.995478793923436,
+      "annual_return": 0.6476592817616722,
+      "sharpe": 4.054307551404644,
+      "max_drawdown": -0.008468202300610073,
+      "daily_win_rate": 0.15807327001356852,
+      "annual_volatility": 0.12515974489275183,
+      "profit_factor": 36.963744266418544,
+      "max_drawdown_start": "2025-04-08",
+      "max_drawdown_end": "2025-04-23"
+    },
+    "trade_count": 831,
+    "avg_daily_turnover": 1.1275440976933515,
+    "total_turnover": 1662.0,
+    "rebalance_count": 1662,
+    "position_mix": {
+      "long_ratio": 0.01735974281862491,
+      "short_ratio": 0.015277403297728923,
+      "flat_ratio": 0.9673628538836462
+    },
+    "trade_win_rate": 0.7292418772563177,
+    "avg_holding_bars": 18.936221419975933,
+    "avg_trade_net_return": 0.0028479824830765733
   },
   "benchmark_monthly_returns": [
     {
@@ -527,7 +636,7 @@
     },
     {
       "month": "2023-03",
-      "net_ret": 0.0
+      "net_ret": 0.08669866330777198
     },
     {
       "month": "2023-04",
@@ -535,7 +644,7 @@
     },
     {
       "month": "2023-05",
-      "net_ret": 0.0
+      "net_ret": 0.21967391410502923
     },
     {
       "month": "2023-06",
@@ -587,7 +696,7 @@
     },
     {
       "month": "2024-06",
-      "net_ret": 0.0
+      "net_ret": 0.013563512094187713
     },
     {
       "month": "2024-07",
@@ -631,11 +740,11 @@
     },
     {
       "month": "2025-05",
-      "net_ret": 0.0
+      "net_ret": 0.014342915719382843
     },
     {
       "month": "2025-06",
-      "net_ret": 0.0
+      "net_ret": 0.011800336272395295
     },
     {
       "month": "2025-07",

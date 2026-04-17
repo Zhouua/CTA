@@ -168,6 +168,29 @@ python code/train.py --force-rebuild
 python code/backtest.py --force-rebuild
 ```
 
+如果你要跑全品种批量训练：
+
+```bash
+python code/train_products.py --all
+```
+
+批量训练会在终端输出每个品种的开始、成功、失败状态，并把运行中间状态持续写到 `results/runs/<run_id>/`。常用文件包括：
+
+- `manifest.json`
+- `run_summary.json`
+- `run_summary.csv`
+- `failed_products.json`
+
+默认还会先检查 `product_registry.json` 里的日期覆盖范围。当前配置要求品种至少覆盖 `2021-01-01` 到 `2026-01-01`；不满足的品种会被直接标记为 `skipped_insufficient_coverage`，不会进入训练。
+
+如果上一次批量训练里有失败或中断，可以直接补跑缺失品种：
+
+```bash
+python code/train_products.py --resume-run <run_id>
+```
+
+`--resume-run` 会保留上次已经 `success` 的品种，只重新训练未成功的品种。
+
 训练脚本会输出：
 
 - `results/models/low_vol/`
@@ -329,4 +352,3 @@ python code/backtest.py --force-rebuild
 14. LightGBM不只是输入因子，还可以先人为划分状态向量(Market, Trend, Momentum等)，然后与关键因子交互，使用cell weight给样本加权
 15. 除了本身的模型，还可以用一个额外的high residual来拟合残差，这个的训练应该更加保守用更少特征更浅树等等
 16. **分成高波和低波的样本进行切分数据集**，切分以后把高波拼接一起和低波拼接一起，然后进行训练(尽量按月切分，日度波动统计作为切分标准，如果有rolling在当月做rolling)
-

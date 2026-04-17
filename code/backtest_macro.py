@@ -8,7 +8,7 @@ backtest_macro.py
     2. 用 judge_macro.build_monthly_regime() 判断每个月宏观是否强、库存周期是否强
     3. 若某月两者均为 False → 当月所有 5min bar 强制空仓
        否则 → 保留原始 CTA 仓位（策略正常运行）
-    4. 分别计算 Benchmark / Macro-Filtered 的 P&L，输出对比报告
+    4. 分别计算 Benchmark / Combined-Filtered 的 P&L，输出对比报告
 
 运行：
     python code/backtest_macro.py [--config config.yaml]
@@ -93,7 +93,8 @@ def apply_macro_filter(
 
     Returns
     -------
-    position_df 的副本，新增 is_macro_strong / is_inventory_strong / open_position 列，
+    position_df 的副本，新增 is_macro_strong / is_inventory_strong /
+    is_demand_strong / open_position 列，
     并在 open_position=False 的月份将 position 覆写为 0。
     """
     df = position_df.copy()
@@ -108,7 +109,7 @@ def apply_macro_filter(
 
     # 左连接：TRADE_DATE 所在月份 → regime 信号
     df = df.merge(
-        regime_lookup[["is_macro_strong", "is_inventory_strong", "open_position"]],
+        regime_lookup[["is_macro_strong", "is_inventory_strong", "is_demand_strong", "open_position"]],
         left_on="_month_key",
         right_index=True,
         how="left",
@@ -119,10 +120,48 @@ def apply_macro_filter(
     df["open_position"] = df["open_position"].fillna(False)
     df["is_macro_strong"] = df["is_macro_strong"].fillna(False)
     df["is_inventory_strong"] = df["is_inventory_strong"].fillna(False)
+    df["is_demand_strong"] = df["is_demand_strong"].fillna(False)
 
     # 核心过滤：open_position=False 时强制空仓
     df.loc[~df["open_position"], "position"] = 0
 
+    return df
+
+
+def apply_single_criterion_filter(
+    position_df: pd.DataFrame,
+    monthly_regime: pd.DataFrame,
+    criterion: str,
+) -> pd.DataFrame:
+    """
+    仅使用单一宏观条件过滤仓位（macro / inventory / demand）。
+
+    Parameters
+    ----------
+    position_df  : 已有仓位序列（含 TRADE_DATE 列）
+    monthly_regime : judge_macro.build_monthly_regime() 的输出
+    criterion    : "is_macro_strong" / "is_inventory_strong" / "is_demand_strong"
+
+    Returns
+    -------
+    position_df 的副本，对 criterion=False 的月份强制 position=0。
+    """
+    df = position_df.copy()
+    df["TRADE_DATE"] = pd.to_datetime(df["TRADE_DATE"])
+    df["_month_key"] = df["TRADE_DATE"].dt.to_period("M").dt.to_timestamp()
+
+    regime_lookup = monthly_regime.copy()
+    regime_lookup.index = pd.to_datetime(regime_lookup.index).to_period("M").to_timestamp()
+
+    df = df.merge(
+        regime_lookup[[criterion]],
+        left_on="_month_key",
+        right_index=True,
+        how="left",
+    )
+    df.drop(columns=["_month_key"], inplace=True)
+    df[criterion] = df[criterion].fillna(False)
+    df.loc[~df[criterion].astype(bool), "position"] = 0
     return df
 
 
@@ -163,53 +202,81 @@ def _add_regime_background(ax, daily_df: pd.DataFrame) -> None:
         ax.axvspan(seg_start, dates.iloc[-1] + pd.Timedelta(days=1), color=color, alpha=0.08, linewidth=0)
 
 
-def _plot_nav(
+def _plot_cum_return(
     ax,
     benchmark_daily: pd.DataFrame,
     filtered_daily: pd.DataFrame,
     regime_daily: pd.DataFrame,
+    macro_daily: pd.DataFrame | None = None,
+    inv_daily: pd.DataFrame | None = None,
+    demand_daily: pd.DataFrame | None = None,
 ) -> None:
     """
-    绘制 NAV 曲线：benchmark（灰色）vs macro-filtered（深蓝色），
-    背景色标识开仓/空仓 regime。
-    始终使用线性坐标。
+    绘制累计收益率曲线（nav_net - 1），从 0% 出发。
+    5条曲线：benchmark（灰色虚线）、combined（深蓝）、
+             macro-only（橙色）、inventory-only（绿色）、demand-only（棕色）。
     """
     import matplotlib.dates as mdates
+    import matplotlib.ticker as mticker
 
     _add_regime_background(ax, regime_daily)
 
     ax.plot(
         benchmark_daily["TRADE_DATE"],
-        benchmark_daily["nav_net"],
+        benchmark_daily["nav_net"] - 1,
         color="#888888",
         linewidth=1.4,
         linestyle="--",
-        label="Benchmark (model always on)",
+        label="Benchmark (always on)",
         alpha=0.85,
     )
     ax.plot(
         filtered_daily["TRADE_DATE"],
-        filtered_daily["nav_net"],
+        filtered_daily["nav_net"] - 1,
         color="#1a6faf",
         linewidth=1.6,
-        label="Macro-Filtered Strategy",
+        label="Combined (any signal on)",
     )
+    if macro_daily is not None:
+        ax.plot(
+            macro_daily["TRADE_DATE"],
+            macro_daily["nav_net"] - 1,
+            color="#e6891a",
+            linewidth=1.4,
+            label="Macro-strong only",
+        )
+    if inv_daily is not None:
+        ax.plot(
+            inv_daily["TRADE_DATE"],
+            inv_daily["nav_net"] - 1,
+            color="#2ca02c",
+            linewidth=1.4,
+            label="Inventory-strong only",
+        )
+    if demand_daily is not None:
+        ax.plot(
+            demand_daily["TRADE_DATE"],
+            demand_daily["nav_net"] - 1,
+            color="#b15928",
+            linewidth=1.4,
+            label="Demand-strong only",
+        )
 
-    ax.set_ylabel("Net NAV")
-
-    ax.set_title("NAV Curve: Benchmark vs Macro-Filtered", fontsize=12)
-    ax.legend(loc="upper left", fontsize=9)
+    ax.yaxis.set_major_formatter(mticker.PercentFormatter(xmax=1.0))
+    ax.set_ylabel("Cumulative Net Return")
+    ax.set_title("Cumulative Return: Strategy Variants", fontsize=12)
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
     ax.grid(alpha=0.22)
 
     from matplotlib.patches import Patch
     bg_handles = [
-        Patch(facecolor="#4daf4a", alpha=0.25, label="Position open (macro OK)"),
-        Patch(facecolor="#e41a1c", alpha=0.25, label="Force flat (macro weak)"),
+        Patch(facecolor="#4daf4a", alpha=0.25, label="Position open (any signal on)"),
+        Patch(facecolor="#e41a1c", alpha=0.25, label="Force flat (all weak)"),
     ]
+    handles, labels = ax.get_legend_handles_labels()
     ax.legend(
-        handles=ax.get_legend_handles_labels()[0] + bg_handles,
-        labels=ax.get_legend_handles_labels()[1] + [h.get_label() for h in bg_handles],
+        handles=handles + bg_handles,
+        labels=labels + [h.get_label() for h in bg_handles],
         loc="upper left", fontsize=8.5,
     )
 
@@ -221,9 +288,10 @@ def _plot_macro_signal_bars(
     test_end: pd.Timestamp,
 ) -> None:
     """
-    每个月绘制两根小柱：
+    每个月绘制三根小柱：
         左柱（蓝色）: is_macro_strong
-        右柱（橙色）: is_inventory_strong
+        中柱（橙色）: is_inventory_strong
+        右柱（棕色）: is_demand_strong
     柱高 = 1（信号激活）或 0（未激活，不画），y 轴 [0, 1.3]。
     仅显示测试期内的月份。
     """
@@ -238,12 +306,13 @@ def _plot_macro_signal_bars(
         ax.set_axis_off()
         return
 
-    bar_width = pd.Timedelta(days=8)   # 每根柱约 8 天宽
-    offset = pd.Timedelta(days=5)      # 两柱之间偏移
+    bar_width = pd.Timedelta(days=6)
+    offset = pd.Timedelta(days=7)
 
     dates = regime.index
     macro_vals = regime["is_macro_strong"].astype(float).values
     inv_vals = regime["is_inventory_strong"].astype(float).values
+    demand_vals = regime["is_demand_strong"].astype(float).values
 
     # 左柱：宏观强
     ax.bar(
@@ -254,14 +323,23 @@ def _plot_macro_signal_bars(
         alpha=0.80,
         label="Macro strong (PPI>0 & PMI≥49.5)",
     )
-    # 右柱：库存周期强
+    # 中柱：库存周期强
     ax.bar(
-        dates + offset,
+        dates,
         inv_vals,
         width=bar_width,
         color="#e6891a",
         alpha=0.80,
         label="Inventory cycle strong",
+    )
+    # 右柱：工业需求强
+    ax.bar(
+        dates + offset,
+        demand_vals,
+        width=bar_width,
+        color="#b15928",
+        alpha=0.80,
+        label="Industrial demand strong",
     )
 
     ax.set_ylim(0, 1.4)
@@ -277,9 +355,13 @@ def _plot_drawdown(
     ax,
     benchmark_daily: pd.DataFrame,
     filtered_daily: pd.DataFrame,
+    regime_daily: pd.DataFrame | None = None,
 ) -> None:
     """回撤对比：benchmark（灰色）vs filtered（蓝色填充）。"""
     import matplotlib.dates as mdates
+
+    if regime_daily is not None:
+        _add_regime_background(ax, regime_daily)
 
     ax.fill_between(
         filtered_daily["TRADE_DATE"],
@@ -354,7 +436,7 @@ def _plot_monthly_returns(
         width=bar_width,
         color="#1a6faf",
         alpha=0.75,
-        label="Macro-Filtered",
+        label="Combined-Filtered",
     )
     ax.axhline(0.0, color="black", linewidth=0.7)
     ax.set_title("Monthly Net Return Comparison", fontsize=11)
@@ -364,51 +446,166 @@ def _plot_monthly_returns(
     ax.grid(alpha=0.22)
 
 
+def _active_day_mask(daily: pd.DataFrame) -> pd.Series:
+    """
+    返回“策略当日实际持仓过”的布尔掩码。
+    若日表缺少持仓列，则退化为用 net_ret != 0 近似。
+    """
+    if {"long_bars", "short_bars"}.issubset(daily.columns):
+        return (daily["long_bars"] + daily["short_bars"]) > 0
+    return daily["net_ret"] != 0
+
+
 def _calc_avg_drawdown(daily: pd.DataFrame) -> float:
-    """计算平均回撤：仅取处于回撤中（< 0）的交易日，求均值。"""
+    """
+    计算平均回撤：仅统计实际持仓且处于回撤中的交易日。
+
+    这样在宏观过滤触发、策略整月空仓时，即便 NAV 仍低于历史高点，
+    这些“水下但未承担风险”的平盘日期也不会继续拉低 Avg DD。
+    """
     dd = daily["net_drawdown"]
-    underwater = dd[dd < 0]
+    active_mask = _active_day_mask(daily)
+    underwater = dd[(dd < 0) & active_mask]
     return float(underwater.mean()) if not underwater.empty else 0.0
 
 
 def _calc_active_win_rate(daily: pd.DataFrame) -> float:
     """
-    活跃日胜率：仅统计 net_ret != 0 的交易日（position 非 0 的日子）。
-    强制空仓日 net_ret == 0，排除在外，避免虚假拉低胜率。
+    活跃日胜率：仅统计实际持仓过的交易日。
+    强制空仓日不计入，避免虚假拉低胜率。
     """
-    active = daily["net_ret"][daily["net_ret"] != 0]
+    active = daily.loc[_active_day_mask(daily), "net_ret"]
     return float((active > 0).mean()) if not active.empty else 0.0
 
 
-def _add_summary_text(ax, bm_summary: dict, ft_summary: dict,
-                      bm_daily: pd.DataFrame, ft_daily: pd.DataFrame) -> None:
-    """在空白 axes 上展示关键指标对比文字。"""
+def _add_summary_text(
+    ax,
+    bm_summary: dict,
+    ft_summary: dict,
+    bm_daily: pd.DataFrame,
+    ft_daily: pd.DataFrame,
+    macro_summary: dict | None = None,
+    macro_daily: pd.DataFrame | None = None,
+    inv_summary: dict | None = None,
+    inv_daily: pd.DataFrame | None = None,
+    demand_summary: dict | None = None,
+    demand_daily: pd.DataFrame | None = None,
+) -> None:
+    """在空白 axes 上展示关键指标对比文字（2列或5列）。"""
     bm_avg_dd = _calc_avg_drawdown(bm_daily)
     ft_avg_dd = _calc_avg_drawdown(ft_daily)
     bm_win = _calc_active_win_rate(bm_daily)
     ft_win = _calc_active_win_rate(ft_daily)
 
     ax.set_axis_off()
-    lines = [
-        "            Benchmark   Filtered",
-        "─" * 36,
-        f"Ann Return  {bm_summary['net']['annual_return']:>9.2%}   {ft_summary['net']['annual_return']:>9.2%}",
-        f"Sharpe      {bm_summary['net']['sharpe']:>9.3f}   {ft_summary['net']['sharpe']:>9.3f}",
-        f"Max DD      {bm_summary['net']['max_drawdown']:>9.2%}   {ft_summary['net']['max_drawdown']:>9.2%}",
-        f"Avg DD      {bm_avg_dd:>9.2%}   {ft_avg_dd:>9.2%}",
-        f"Ann Vol     {bm_summary['net']['annual_volatility']:>9.2%}   {ft_summary['net']['annual_volatility']:>9.2%}",
-        f"Win Rate*   {bm_win:>9.2%}   {ft_win:>9.2%}",
-        f"Trades      {bm_summary['trade_count']:>9d}   {ft_summary['trade_count']:>9d}",
-    ]
+
+    has_extra = (
+        macro_summary is not None
+        and inv_summary is not None
+        and demand_summary is not None
+    )
+
+    if has_extra:
+        mc_avg_dd = _calc_avg_drawdown(macro_daily)
+        iv_avg_dd = _calc_avg_drawdown(inv_daily)
+        dm_avg_dd = _calc_avg_drawdown(demand_daily)
+        mc_win = _calc_active_win_rate(macro_daily)
+        iv_win = _calc_active_win_rate(inv_daily)
+        dm_win = _calc_active_win_rate(demand_daily)
+        mc = macro_summary
+        iv = inv_summary
+        dm = demand_summary
+
+        lines = [
+            "           Benchmark Combined   Macro     Inv  Demand",
+            "─" * 60,
+            (f"Ann Return  {bm_summary['net']['annual_return']:>8.2%}"
+             f"  {ft_summary['net']['annual_return']:>8.2%}"
+             f"  {mc['net']['annual_return']:>8.2%}"
+             f"  {iv['net']['annual_return']:>8.2%}"
+             f"  {dm['net']['annual_return']:>8.2%}"),
+            (f"Sharpe      {bm_summary['net']['sharpe']:>8.3f}"
+             f"  {ft_summary['net']['sharpe']:>8.3f}"
+             f"  {mc['net']['sharpe']:>8.3f}"
+             f"  {iv['net']['sharpe']:>8.3f}"
+             f"  {dm['net']['sharpe']:>8.3f}"),
+            (f"Max DD      {bm_summary['net']['max_drawdown']:>8.2%}"
+             f"  {ft_summary['net']['max_drawdown']:>8.2%}"
+             f"  {mc['net']['max_drawdown']:>8.2%}"
+             f"  {iv['net']['max_drawdown']:>8.2%}"
+             f"  {dm['net']['max_drawdown']:>8.2%}"),
+            (f"Avg ActiveDD*{bm_avg_dd:>7.2%}"
+             f"  {ft_avg_dd:>8.2%}"
+             f"  {mc_avg_dd:>8.2%}"
+             f"  {iv_avg_dd:>8.2%}"
+             f"  {dm_avg_dd:>8.2%}"),
+            (f"Ann Vol     {bm_summary['net']['annual_volatility']:>8.2%}"
+             f"  {ft_summary['net']['annual_volatility']:>8.2%}"
+             f"  {mc['net']['annual_volatility']:>8.2%}"
+             f"  {iv['net']['annual_volatility']:>8.2%}"
+             f"  {dm['net']['annual_volatility']:>8.2%}"),
+            (f"Win Rate*   {bm_win:>8.2%}"
+             f"  {ft_win:>8.2%}"
+             f"  {mc_win:>8.2%}"
+             f"  {iv_win:>8.2%}"
+             f"  {dm_win:>8.2%}"),
+            (f"Trades      {bm_summary['trade_count']:>8d}"
+             f"  {ft_summary['trade_count']:>8d}"
+             f"  {mc['trade_count']:>8d}"
+             f"  {iv['trade_count']:>8d}"
+             f"  {dm['trade_count']:>8d}"),
+        ]
+        fontsize = 8.5
+    else:
+        lines = [
+            "            Benchmark   Filtered",
+            "─" * 36,
+            f"Ann Return  {bm_summary['net']['annual_return']:>9.2%}   {ft_summary['net']['annual_return']:>9.2%}",
+            f"Sharpe      {bm_summary['net']['sharpe']:>9.3f}   {ft_summary['net']['sharpe']:>9.3f}",
+            f"Max DD      {bm_summary['net']['max_drawdown']:>9.2%}   {ft_summary['net']['max_drawdown']:>9.2%}",
+            f"Avg ActiveDD*{bm_avg_dd:>8.2%}   {ft_avg_dd:>9.2%}",
+            f"Ann Vol     {bm_summary['net']['annual_volatility']:>9.2%}   {ft_summary['net']['annual_volatility']:>9.2%}",
+            f"Win Rate*   {bm_win:>9.2%}   {ft_win:>9.2%}",
+            f"Trades      {bm_summary['trade_count']:>9d}   {ft_summary['trade_count']:>9d}",
+        ]
+        fontsize = 10
+
     ax.text(
-        0.08, 0.55, "\n".join(lines),
+        0.04, 0.55, "\n".join(lines),
         transform=ax.transAxes,
-        fontsize=10,
+        fontsize=fontsize,
         fontfamily="monospace",
         va="center",
         bbox={"boxstyle": "round,pad=0.5", "facecolor": "#f5f5f5", "edgecolor": "#cccccc"},
     )
     ax.set_title("Performance Summary", fontsize=11)
+
+
+def _add_metric_notes(ax) -> None:
+    """在右侧留白区域解释带星号的活跃日指标。"""
+    ax.set_axis_off()
+    notes = [
+        "Starred Metrics",
+        "",
+        "Avg ActiveDD*",
+        "Average drawdown on active days only.",
+        "A day is active if the strategy held any",
+        "long or short position during that day.",
+        "Flat days are excluded.",
+        "",
+        "Win Rate*",
+        "Share of active days with positive",
+        "daily net return.",
+        "Forced-flat days are excluded.",
+    ]
+    ax.text(
+        0.05, 0.92, "\n".join(notes),
+        transform=ax.transAxes,
+        fontsize=9.5,
+        va="top",
+        bbox={"boxstyle": "round,pad=0.5", "facecolor": "#faf7ef", "edgecolor": "#d8c9a7"},
+    )
+    ax.set_title("Metric Notes", fontsize=11)
 
 
 def _add_split_lines(axes: list, split_dates: dict) -> None:
@@ -445,6 +642,15 @@ def plot_macro_backtest_report(
     output_path: Path,
     title_suffix: str = "",
     split_dates: dict | None = None,
+    macro_pnl: pd.DataFrame | None = None,
+    macro_daily: pd.DataFrame | None = None,
+    macro_summary: dict | None = None,
+    inv_pnl: pd.DataFrame | None = None,
+    inv_daily: pd.DataFrame | None = None,
+    inv_summary: dict | None = None,
+    demand_pnl: pd.DataFrame | None = None,
+    demand_daily: pd.DataFrame | None = None,
+    demand_summary: dict | None = None,
 ) -> None:
     """
     输出宏观过滤对比报告，包含：
@@ -490,19 +696,32 @@ def plot_macro_backtest_report(
     test_start = pd.to_datetime(benchmark_daily["TRADE_DATE"].min())
     test_end = pd.to_datetime(benchmark_daily["TRADE_DATE"].max())
 
-    _plot_nav(ax_nav, benchmark_daily, filtered_daily, daily_regime)
+    _plot_cum_return(
+        ax_nav,
+        benchmark_daily,
+        filtered_daily,
+        daily_regime,
+        macro_daily=macro_daily,
+        inv_daily=inv_daily,
+        demand_daily=demand_daily,
+    )
     _plot_macro_signal_bars(ax_sig, monthly_regime, test_start, test_end)
-    _plot_drawdown(ax_dd, benchmark_daily, filtered_daily)
+    _plot_drawdown(ax_dd, benchmark_daily, filtered_daily, regime_daily=daily_regime)
     _plot_monthly_returns(ax_mon, benchmark_daily, filtered_daily)
-    _add_summary_text(ax_txt, bm_summary, ft_summary, benchmark_daily, filtered_daily)
+    _add_summary_text(
+        ax_txt, bm_summary, ft_summary, benchmark_daily, filtered_daily,
+        macro_summary=macro_summary, macro_daily=macro_daily,
+        inv_summary=inv_summary, inv_daily=inv_daily,
+        demand_summary=demand_summary, demand_daily=demand_daily,
+    )
 
     # 在 NAV / 信号柱 / 回撤图上标注数据集分割线
     if split_dates is not None:
         _add_split_lines([ax_nav, ax_sig, ax_dd], split_dates)
 
-    ax_blank.set_axis_off()
+    _add_metric_notes(ax_blank)
 
-    title = "Macro-Filtered CTA Backtest Report"
+    title = "Combined Macro CTA Backtest Report"
     if title_suffix:
         title += f"  [{title_suffix}]"
     fig.suptitle(title, fontsize=14, fontweight="bold", y=1.005)
@@ -526,15 +745,24 @@ def _run_single_report(
     lag_months: int,
     split_dates: dict | None,
 ) -> dict[str, Any]:
-    """单次回测流程：生成仓位 → 宏观过滤 → P&L → 绘图 → 保存 JSON。"""
+    """单次回测流程：生成仓位 → 宏观过滤（5种）→ P&L → 绘图 → 保存 JSON。"""
     pos_bm = generate_positions(eval_pred, rule_map, settings)
     pos_ft = apply_macro_filter(pos_bm, monthly_regime)
+    pos_mc = apply_single_criterion_filter(pos_bm, monthly_regime, "is_macro_strong")
+    pos_iv = apply_single_criterion_filter(pos_bm, monthly_regime, "is_inventory_strong")
+    pos_dm = apply_single_criterion_filter(pos_bm, monthly_regime, "is_demand_strong")
 
     bm_pnl, bm_daily = calc_pnl(pos_bm, settings["commission_rate"], settings["slippage_rate"], settings["hold_to_next_bar"])
     ft_pnl, ft_daily = calc_pnl(pos_ft, settings["commission_rate"], settings["slippage_rate"], settings["hold_to_next_bar"])
+    mc_pnl, mc_daily = calc_pnl(pos_mc, settings["commission_rate"], settings["slippage_rate"], settings["hold_to_next_bar"])
+    iv_pnl, iv_daily = calc_pnl(pos_iv, settings["commission_rate"], settings["slippage_rate"], settings["hold_to_next_bar"])
+    dm_pnl, dm_daily = calc_pnl(pos_dm, settings["commission_rate"], settings["slippage_rate"], settings["hold_to_next_bar"])
 
     bm_summary = performance_summary(bm_daily, bm_pnl, settings["annualization_days"])
     ft_summary = performance_summary(ft_daily, ft_pnl, settings["annualization_days"])
+    mc_summary = performance_summary(mc_daily, mc_pnl, settings["annualization_days"])
+    iv_summary = performance_summary(iv_daily, iv_pnl, settings["annualization_days"])
+    dm_summary = performance_summary(dm_daily, dm_pnl, settings["annualization_days"])
 
     plot_macro_backtest_report(
         benchmark_pnl=bm_pnl,
@@ -547,6 +775,15 @@ def _run_single_report(
         output_path=report_path,
         title_suffix=title_suffix,
         split_dates=split_dates,
+        macro_pnl=mc_pnl,
+        macro_daily=mc_daily,
+        macro_summary=mc_summary,
+        inv_pnl=iv_pnl,
+        inv_daily=iv_daily,
+        inv_summary=iv_summary,
+        demand_pnl=dm_pnl,
+        demand_daily=dm_daily,
+        demand_summary=dm_summary,
     )
     print(f"[macro_backtest] Report saved → {report_path}")
 
@@ -559,9 +796,13 @@ def _run_single_report(
             "months_total": n_total,
             "macro_strong_months": int(monthly_regime["is_macro_strong"].sum()),
             "inventory_strong_months": int(monthly_regime["is_inventory_strong"].sum()),
+            "demand_strong_months": int(monthly_regime["is_demand_strong"].sum()),
         },
         "benchmark_backtest": bm_summary,
         "filtered_backtest": ft_summary,
+        "macro_only_backtest": mc_summary,
+        "inventory_only_backtest": iv_summary,
+        "demand_only_backtest": dm_summary,
         "benchmark_monthly_returns": build_monthly_returns(bm_daily).to_dict(orient="records"),
         "filtered_monthly_returns": build_monthly_returns(ft_daily).to_dict(orient="records"),
     }
@@ -628,7 +869,8 @@ def run_macro_backtest(
     print(
         f"[macro_backtest] Macro regime: {n_open}/{n_total} months allow position "
         f"(macro_strong={int(monthly_regime['is_macro_strong'].sum())}, "
-        f"inv_strong={int(monthly_regime['is_inventory_strong'].sum())})"
+        f"inv_strong={int(monthly_regime['is_inventory_strong'].sum())}, "
+        f"demand_strong={int(monthly_regime['is_demand_strong'].sum())})"
     )
 
     # ── 报告①：仅测试集 ─────────────────────────────────────────────────────
@@ -695,13 +937,19 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 def _print_summary(label: str, result: dict) -> None:
     bm = result["benchmark_backtest"]["net"]
     ft = result["filtered_backtest"]["net"]
+    mc = result.get("macro_only_backtest", {}).get("net", {})
+    iv = result.get("inventory_only_backtest", {}).get("net", {})
+    dm = result.get("demand_only_backtest", {}).get("net", {})
     print(f"\n── {label} ──────────────────────────────")
-    print(f"{'':20s} {'Benchmark':>12s}  {'Filtered':>12s}")
-    print(f"{'Ann. Return':20s} {bm['annual_return']:>12.2%}  {ft['annual_return']:>12.2%}")
-    print(f"{'Sharpe':20s} {bm['sharpe']:>12.3f}  {ft['sharpe']:>12.3f}")
-    print(f"{'Max Drawdown':20s} {bm['max_drawdown']:>12.2%}  {ft['max_drawdown']:>12.2%}")
-    print(f"{'Ann. Volatility':20s} {bm['annual_volatility']:>12.2%}  {ft['annual_volatility']:>12.2%}")
-    print(f"{'Trade Count':20s} {result['benchmark_backtest']['trade_count']:>12d}  {result['filtered_backtest']['trade_count']:>12d}")
+    print(f"{'':20s} {'Benchmark':>10s}  {'Both':>10s}  {'Macro-only':>10s}  {'Inv-only':>10s}  {'Demand-only':>11s}")
+    print(f"{'Ann. Return':20s} {bm['annual_return']:>10.2%}  {ft['annual_return']:>10.2%}  {mc.get('annual_return', float('nan')):>10.2%}  {iv.get('annual_return', float('nan')):>10.2%}  {dm.get('annual_return', float('nan')):>11.2%}")
+    print(f"{'Sharpe':20s} {bm['sharpe']:>10.3f}  {ft['sharpe']:>10.3f}  {mc.get('sharpe', float('nan')):>10.3f}  {iv.get('sharpe', float('nan')):>10.3f}  {dm.get('sharpe', float('nan')):>11.3f}")
+    print(f"{'Max Drawdown':20s} {bm['max_drawdown']:>10.2%}  {ft['max_drawdown']:>10.2%}  {mc.get('max_drawdown', float('nan')):>10.2%}  {iv.get('max_drawdown', float('nan')):>10.2%}  {dm.get('max_drawdown', float('nan')):>11.2%}")
+    print(f"{'Ann. Volatility':20s} {bm['annual_volatility']:>10.2%}  {ft['annual_volatility']:>10.2%}  {mc.get('annual_volatility', float('nan')):>10.2%}  {iv.get('annual_volatility', float('nan')):>10.2%}  {dm.get('annual_volatility', float('nan')):>11.2%}")
+    print(f"{'Trade Count':20s} {result['benchmark_backtest']['trade_count']:>10d}  {result['filtered_backtest']['trade_count']:>10d}"
+          f"  {result.get('macro_only_backtest', {}).get('trade_count', 0):>10d}"
+          f"  {result.get('inventory_only_backtest', {}).get('trade_count', 0):>10d}"
+          f"  {result.get('demand_only_backtest', {}).get('trade_count', 0):>11d}")
 
 
 if __name__ == "__main__":
