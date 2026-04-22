@@ -1,0 +1,11 @@
+=== T1 Acceptance Script ===
+Date: 2026-04-22T06:19:51Z
+
+Check 1: file exists
+PASS: docs/run_20260416_170652_top_performers.md exists
+
+Check 2: at least 27 markdown table rows (1 header + 1 sep + 25 data)
+Row count: 43
+PASS: row count >= 27
+
+=== T1 ACCEPTANCE PASSED ===
