@@ -261,7 +261,7 @@ T3.3 实跑 ablation (在 T4.2 产出后)
 | T3.1 | xlsx 宽表读取 + 单测 | done | 2026-04-22T06:54:01Z | `code/dataset.py` (`_read_mid_weekly_xlsx` / `_read_mid_weekly_csv` / `_build_mid_column_name`) · `tests/test_dataset_and_modeling.py::test_mid_weekly_xlsx_wide_format` · 验收 `results/comparison/_audit/T3_1_check.txt` | 列命名 `MID_<PID>_<ind_id>`，指标 meta 同步落 `cache_meta.json`，16/16 单测通过 |
 | T3.2 | 策略 B + 派生因子 | done | 2026-04-22T07:12:02Z | `config.yaml` 新增 `mid_weekly:` 节 · `code/dataset.py` (`_compute_mid_weekly_derivatives` / 扩展 `_merge_mid_weekly_features` / `prepare` 分流 MID_*) · `tests/test_dataset_and_modeling.py::test_mid_weekly_strategy_b_available_clamp_and_derived` · 验收 `results/comparison/_audit/T3_2_check.txt` | AVAILABLE 哑变量、`ffill_max_bars` 截断、RET/ZSCORE/PCT_RANK × [4,13,52] 派生因子、MID_* 单独 `missing_ratio_relax=0.65`、MID_* NaN→0 补齐以免 dropna 杀行；17/17 单测通过 |
 | T3.3 | 哑变量验证脚本 | done | 2026-04-22T07:27:23Z | `code/audit_mid_weekly_features.py` · 验收 `results/comparison/_audit/T3_3_check.txt` · 预览 `results/comparison/_audit/T3_3_preview.{md,json}` | 仅写脚本；骨架支持 full feature_importance.json 与 top_features fallback；`--ablation` 当前发射 skeleton 需后续在 T3.3* 接实际训练 |
-| T4.1 | registry 更新 | todo | – | – | – |
+| T4.1 | registry 更新 | done | 2026-04-22T07:40:04Z | `code/update_registry_with_mid_weekly.py` · `data/product_registry.json` 25 条被赋值 · `config.yaml` `paths.mid_weekly_dir` 指向 `_cleaned/` · 验收 `results/comparison/_audit/T4_1_check.txt` | 25 个 xlsx 品种全部映射为 `[<PID>.xlsx]`；脚本幂等；17/17 单测通过 |
 | T4.2 | 新 batch run | todo | – | – | run_id 完成后回填 |
 | T4.3 | A/B 对比报告 | todo | – | – | – |
 | T3.3* | 实跑 ablation + 裁决 | todo | – | – | 依赖 T4.2 |
