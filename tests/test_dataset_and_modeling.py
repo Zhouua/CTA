@@ -109,6 +109,121 @@ class DatasetAndModelingTest(unittest.TestCase):
             self.assertEqual(mid_cols, ["MID_inventory"])
             self.assertEqual(merged["MID_inventory"].tolist(), [100.0, 100.0, 200.0])
 
+    def test_mid_weekly_xlsx_wide_format(self) -> None:
+        """T3.1: xlsx wide-format reader. 4-row header + multi-indicator + NaN tail."""
+        import openpyxl
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            raw_path = root / "RBZL.SHF.csv"
+            mid_dir = root / "mid_weekly"
+            mid_dir.mkdir()
+            merged_cache = root / "cache.parquet"
+            cache_meta = root / "cache_meta.json"
+            regime_plot = root / "regime_plot.png"
+
+            # 5-min raw bars spanning 3 calendar weeks (2024-01-01 Mon .. 2024-01-21 Sun).
+            raw_index = pd.date_range("2024-01-01 09:00:00", "2024-01-19 14:55:00", freq="5min")
+            raw_index = raw_index[(raw_index.hour >= 9) & (raw_index.hour < 15) & (raw_index.weekday < 5)]
+            raw_df = pd.DataFrame(
+                {
+                    "TDATE": raw_index,
+                    "OPEN": np.arange(len(raw_index), dtype=float) + 1.0,
+                    "HIGH": np.arange(len(raw_index), dtype=float) + 2.0,
+                    "LOW": np.arange(len(raw_index), dtype=float),
+                    "CLOSE": np.arange(len(raw_index), dtype=float) + 1.5,
+                    "VOLUME": 10,
+                    "AMOUNT": 100,
+                }
+            )
+            raw_df.to_csv(raw_path, index=False)
+
+            # Synthesize a 2-indicator xlsx with the strict 4-row header convention.
+            # indA: has weekly values on all 3 Mondays.
+            # indB: valid only on 2024-01-01 Mon and 2024-01-08 Mon; NaN on 2024-01-15.
+            xlsx_path = mid_dir / "RB.xlsx"
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.cell(row=1, column=1, value="单位")
+            ws.cell(row=1, column=2, value="万吨")
+            ws.cell(row=1, column=3, value="%")
+            ws.cell(row=2, column=1, value="指标名称")
+            ws.cell(row=2, column=2, value="螺纹钢社会库存")
+            ws.cell(row=2, column=3, value="高炉开工率")
+            ws.cell(row=3, column=1, value="频率")
+            ws.cell(row=3, column=2, value="周")
+            ws.cell(row=3, column=3, value="周")
+            ws.cell(row=4, column=1, value="指标ID")
+            ws.cell(row=4, column=2, value="S123456")
+            ws.cell(row=4, column=3, value="S789012")
+
+            ws.cell(row=5, column=1, value=pd.Timestamp("2024-01-15"))
+            ws.cell(row=5, column=2, value=300.0)
+            # col 3 (indB) intentionally blank on 2024-01-15
+            ws.cell(row=6, column=1, value=pd.Timestamp("2024-01-08"))
+            ws.cell(row=6, column=2, value=280.0)
+            ws.cell(row=6, column=3, value=82.0)
+            ws.cell(row=7, column=1, value=pd.Timestamp("2024-01-01"))
+            ws.cell(row=7, column=2, value=260.0)
+            ws.cell(row=7, column=3, value=80.0)
+            wb.save(xlsx_path)
+
+            builder = FactorDatasetBuilder(
+                config_override={
+                    "paths": {
+                        "raw_data": str(raw_path),
+                        "merged_cache": str(merged_cache),
+                        "cache_meta": str(cache_meta),
+                        "regime_plot": str(regime_plot),
+                        "mid_weekly_dir": str(mid_dir),
+                    },
+                    "data": {"use_mid_weekly": True},
+                    "product": {"product_id": "RB", "mid_weekly_files": ["RB.xlsx"]},
+                }
+            )
+            raw = builder._read_raw_data()
+            merged, mid_cols = builder._merge_mid_weekly_features(raw)
+
+            # Two MID_* columns exist and carry the product prefix.
+            self.assertEqual(len(mid_cols), 2)
+            for col in mid_cols:
+                self.assertTrue(col.startswith("MID_RB_"), f"column {col} missing MID_RB_ prefix")
+            # Column-level metadata persisted with frequency / indicator_id.
+            self.assertEqual(len(builder._mid_weekly_metadata), 2)
+            for meta in builder._mid_weekly_metadata.values():
+                self.assertEqual(meta["frequency"], "周")
+                self.assertIn(meta["indicator_id"], {"S123456", "S789012"})
+
+            # Timestamp alignment: value at the Monday bar == that Monday's xlsx value
+            # (backward merge_asof picks the same-day record).
+            ind_a = next(c for c in mid_cols if builder._mid_weekly_metadata[c]["indicator_id"] == "S123456")
+            ind_b = next(c for c in mid_cols if builder._mid_weekly_metadata[c]["indicator_id"] == "S789012")
+
+            def at(ts: str) -> pd.Series:
+                row = merged.loc[merged["TDATE"] == pd.Timestamp(ts)]
+                self.assertEqual(len(row), 1, f"no row at {ts}")
+                return row.iloc[0]
+
+            self.assertAlmostEqual(float(at("2024-01-01 09:00:00")[ind_a]), 260.0, places=3)
+            self.assertAlmostEqual(float(at("2024-01-08 09:00:00")[ind_a]), 280.0, places=3)
+            self.assertAlmostEqual(float(at("2024-01-15 09:00:00")[ind_a]), 300.0, places=3)
+
+            # Within-week forward fill: Friday of the first week should still carry
+            # Monday's value (no bfill → no future leakage).
+            self.assertAlmostEqual(float(at("2024-01-05 14:55:00")[ind_a]), 260.0, places=3)
+
+            # No future leakage: the Tuesday of week 1 (2024-01-02) predates indB's
+            # first valid date (2024-01-01 09:00 Mon) — wait, 01-01 is Mon so
+            # Tue 01-02 is after. Pick an earlier bar: we chose raw start 01-01 09:00,
+            # so the very first raw bar IS the xlsx timestamp. Confirm ffill for
+            # Tue carries Mon's indB value:
+            self.assertAlmostEqual(float(at("2024-01-02 10:00:00")[ind_b]), 80.0, places=3)
+            # After indB goes NaN (Mon 01-15), merge_asof + ffill should carry the
+            # last known value (82.0 from 01-08), not leak the future. The xlsx
+            # row for 01-15 has indB blank, so the aligned value stays 82.0.
+            self.assertAlmostEqual(float(at("2024-01-15 09:00:00")[ind_b]), 82.0, places=3)
+            self.assertAlmostEqual(float(at("2024-01-19 14:55:00")[ind_b]), 82.0, places=3)
+
     def test_train_dual_regime_models_skips_model_persistence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)

@@ -222,6 +222,10 @@ class FactorDatasetBuilder:
         self.paths = self.settings["paths"]
         self.timestamp_col = self.settings["timestamp_col"]
         self.trade_date_col = self.settings["trade_date_col"]
+        # Populated by _merge_mid_weekly_features (xlsx path), reloaded from
+        # cache_meta.json when features are read from cache. Maps MID_* col
+        # name -> {indicator_name, indicator_id, frequency, unit, source_file}.
+        self._mid_weekly_metadata: dict[str, dict[str, str]] = {}
 
     def _read_raw_data(self) -> pd.DataFrame:
         dtype_map = {
@@ -346,25 +350,142 @@ class FactorDatasetBuilder:
                 return col
         return None
 
-    def _read_mid_weekly_factor(self, factor_path: Path) -> pd.DataFrame:
+    @staticmethod
+    def _safe_mid_token(raw: str) -> str:
+        """Turn a (possibly CJK) indicator label into an ASCII-safe token.
+
+        Non-alphanumeric and non-ASCII chars become underscores; runs of
+        underscores collapse. Used as a *fallback* identifier when the xlsx
+        column has no 指标ID.
+        """
+        if not raw:
+            return ""
+        buf: list[str] = []
+        for ch in raw:
+            buf.append(ch if (ch.isalnum() and ord(ch) < 128) else "_")
+        token = "".join(buf).strip("_")
+        while "__" in token:
+            token = token.replace("__", "_")
+        return token
+
+    def _build_mid_column_name(
+        self,
+        product_id: str,
+        indicator_id: str,
+        indicator_name: str,
+        seen: set[str],
+    ) -> str:
+        """Column naming for mid_weekly series (xlsx path).
+
+        Primary form: ``MID_<PID>_<ind_id>`` (indicator IDs are unique per xlsx).
+        Fallback: ``MID_<PID>_<ascii-safe name>[_<hash6>]`` truncated to ≤ 40
+        chars of tail after the prefix.
+        """
+        prefix = f"MID_{product_id}_" if product_id else "MID_"
+        if indicator_id:
+            core = self._safe_mid_token(indicator_id) or indicator_id
+            candidate = f"{prefix}{core}"
+        else:
+            tok = self._safe_mid_token(indicator_name)
+            tok = tok[:40] if tok else ""
+            h6 = hashlib.md5(indicator_name.encode("utf-8")).hexdigest()[:6]
+            candidate = f"{prefix}{tok}_{h6}" if tok else f"{prefix}{h6}"
+        # disambiguate if a column with the same name already exists
+        final = candidate
+        counter = 2
+        while final in seen:
+            final = f"{candidate}_{counter}"
+            counter += 1
+        seen.add(final)
+        return final
+
+    def _read_mid_weekly_xlsx(self, factor_path: Path, seen: set[str]) -> tuple[pd.DataFrame, dict[str, dict[str, str]]]:
+        """Read a 4-header-row wide-format xlsx (same layout as audit_mid_weekly.py).
+
+        Returns ``(frame, meta)`` where ``frame`` has the canonical timestamp
+        column plus one ``MID_*`` column per indicator, and ``meta`` maps
+        column -> {indicator_name, frequency, unit, indicator_id, source_file}.
+        """
+        HEADER_ROWS = 4
+        META_UNIT, META_NAME, META_FREQ, META_ID = 0, 1, 2, 3
+
+        raw = pd.read_excel(factor_path, sheet_name=0, header=None)
+        if raw.shape[0] < HEADER_ROWS + 1 or raw.shape[1] < 2:
+            raise ValueError(f"Mid-weekly xlsx {factor_path} too small or malformed.")
+
+        product_id = str(self.settings.get("product_id") or factor_path.stem).upper()
+        data = raw.iloc[HEADER_ROWS:, :].copy()
+        data.iloc[:, 0] = pd.to_datetime(data.iloc[:, 0], errors="coerce")
+        data = data.dropna(subset=[data.columns[0]])
+        data = data.sort_values(data.columns[0])
+
+        frame = pd.DataFrame({self.timestamp_col: pd.to_datetime(data.iloc[:, 0].values)})
+        meta: dict[str, dict[str, str]] = {}
+        for col in range(1, raw.shape[1]):
+            unit = "" if pd.isna(raw.iat[META_UNIT, col]) else str(raw.iat[META_UNIT, col]).strip()
+            name = "" if pd.isna(raw.iat[META_NAME, col]) else str(raw.iat[META_NAME, col]).strip()
+            freq = "" if pd.isna(raw.iat[META_FREQ, col]) else str(raw.iat[META_FREQ, col]).strip()
+            ind_id = "" if pd.isna(raw.iat[META_ID, col]) else str(raw.iat[META_ID, col]).strip()
+            col_name = self._build_mid_column_name(product_id, ind_id, name, seen)
+            frame[col_name] = pd.to_numeric(data.iloc[:, col].values, errors="coerce").astype("float32")
+            meta[col_name] = {
+                "indicator_name": name,
+                "frequency": freq,
+                "unit": unit,
+                "indicator_id": ind_id,
+                "source_file": factor_path.name,
+            }
+
+        # Collapse duplicate timestamps by keeping last observation per ts.
+        frame = frame.sort_values(self.timestamp_col).drop_duplicates(subset=[self.timestamp_col], keep="last").reset_index(drop=True)
+        return frame, meta
+
+    def _read_mid_weekly_csv(self, factor_path: Path, seen: set[str]) -> tuple[pd.DataFrame, dict[str, dict[str, str]]]:
+        """Legacy CSV path: 1 timestamp column + exactly 1 value column."""
         factor_df = pd.read_csv(factor_path, low_memory=False)
         factor_df = factor_df.loc[:, ~factor_df.columns.astype(str).str.startswith("Unnamed:")]
         timestamp_col = self._detect_mid_timestamp_col(factor_df.columns.tolist())
         if timestamp_col is None:
             raise ValueError(f"Mid-weekly file {factor_path} does not contain a recognizable timestamp column.")
-
         value_cols = [col for col in factor_df.columns if col != timestamp_col]
         if len(value_cols) != 1:
-            raise ValueError(f"Mid-weekly file {factor_path} must contain exactly one value column.")
-
+            raise ValueError(f"Mid-weekly CSV {factor_path} must contain exactly one value column.")
         value_col = value_cols[0]
         factor_name = f"MID_{factor_path.stem}"
+        # disambiguate against seen set (cross-file collisions)
+        final = factor_name
+        counter = 2
+        while final in seen:
+            final = f"{factor_name}_{counter}"
+            counter += 1
+        seen.add(final)
+
         frame = factor_df[[timestamp_col, value_col]].copy()
         frame[timestamp_col] = pd.to_datetime(frame[timestamp_col])
         frame = frame.sort_values(timestamp_col).drop_duplicates(subset=[timestamp_col], keep="last")
         frame[value_col] = pd.to_numeric(frame[value_col], errors="coerce").astype("float32")
-        frame = frame.rename(columns={timestamp_col: self.timestamp_col, value_col: factor_name})
-        return frame
+        frame = frame.rename(columns={timestamp_col: self.timestamp_col, value_col: final}).reset_index(drop=True)
+        meta = {
+            final: {
+                "indicator_name": value_col,
+                "frequency": "",
+                "unit": "",
+                "indicator_id": "",
+                "source_file": factor_path.name,
+            }
+        }
+        return frame, meta
+
+    def _read_mid_weekly_factor(self, factor_path: Path, seen: set[str] | None = None) -> tuple[pd.DataFrame, dict[str, dict[str, str]]]:
+        """Dispatch on file extension. Returns (frame, meta) as above."""
+        if seen is None:
+            seen = set()
+        suffix = factor_path.suffix.lower()
+        if suffix in {".xlsx", ".xls"}:
+            return self._read_mid_weekly_xlsx(factor_path, seen)
+        if suffix == ".csv":
+            return self._read_mid_weekly_csv(factor_path, seen)
+        raise ValueError(f"Unsupported mid-weekly file type: {factor_path}")
 
     def _merge_mid_weekly_features(self, raw_df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
         if not self.settings["use_mid_weekly"]:
@@ -379,23 +500,27 @@ class FactorDatasetBuilder:
 
         merged = raw_df.sort_values(self.timestamp_col).reset_index(drop=True).copy()
         mid_cols: list[str] = []
+        seen: set[str] = set()
+        all_meta: dict[str, dict[str, str]] = {}
         for file_name in files:
             factor_path = Path(file_name)
             if not factor_path.is_absolute():
                 factor_path = mid_weekly_dir / factor_path
             if not factor_path.exists():
                 raise FileNotFoundError(f"Missing mid-weekly file for product {self.settings['product_id']}: {factor_path}")
-            factor_df = self._read_mid_weekly_factor(factor_path)
-            factor_col = [col for col in factor_df.columns if col != self.timestamp_col][0]
+            factor_df, meta = self._read_mid_weekly_factor(factor_path, seen)
+            new_cols = [col for col in factor_df.columns if col != self.timestamp_col]
             merged = pd.merge_asof(
                 merged,
                 factor_df.sort_values(self.timestamp_col),
                 on=self.timestamp_col,
                 direction="backward",
             )
-            mid_cols.append(factor_col)
+            mid_cols.extend(new_cols)
+            all_meta.update(meta)
         if mid_cols:
             merged[mid_cols] = merged[mid_cols].ffill()
+        self._mid_weekly_metadata = all_meta
         return merged, mid_cols
 
     def _add_engineered_features(self, df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
@@ -520,6 +645,7 @@ class FactorDatasetBuilder:
             "factor_cols": factor_cols,
             "runtime_factor_cols": runtime_factor_cols,
             "mid_weekly_cols": mid_weekly_cols,
+            "mid_weekly_metadata": self._mid_weekly_metadata,
             "engineered_cols": engineered_cols,
             "product_meta": self.settings["product_meta"],
             "runtime_manifest": runtime_manifest,
@@ -581,6 +707,7 @@ class FactorDatasetBuilder:
                 engineered_cols = list(cache_meta.get("engineered_cols", []))
                 runtime_factor_cols = list(cache_meta.get("runtime_factor_cols", []))
                 mid_weekly_cols = list(cache_meta.get("mid_weekly_cols", []))
+                self._mid_weekly_metadata = dict(cache_meta.get("mid_weekly_metadata", {}))
                 runtime_manifest = dict(cache_meta.get("runtime_manifest", {}))
             else:
                 factor_cols = [col for col in cached.columns if not col.startswith("ENG_") and col not in self._non_factor_columns()]

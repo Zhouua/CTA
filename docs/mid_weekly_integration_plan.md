@@ -258,7 +258,7 @@ T3.3 实跑 ablation (在 T4.2 产出后)
 |---|---|---|---|---|---|
 | T1 | Baseline top performers | done | 2026-04-22T06:19:51Z | `docs/run_20260416_170652_top_performers.md` · 验收 `results/comparison/_audit/T1_check.txt` | 25 success 均 `mid_weekly_feature_count=0`，作为 baseline 身份确认 |
 | T2 | xlsx audit + recs 更新 | done | 2026-04-22T06:25:10Z | `code/audit_mid_weekly.py` · `docs/mid_weekly_audit.md` · `data/mid_weekly/_cleaned/*.xlsx` · `docs/mid_weekly_recommendations.md` 每品种追加 · 验收 `results/comparison/_audit/T2_check.txt` | 25/25 xlsx 无硬重复；7 个软重复对触发 § 9 Q1（等待用户裁决） |
-| T3.1 | xlsx 宽表读取 + 单测 | todo | – | – | – |
+| T3.1 | xlsx 宽表读取 + 单测 | done | 2026-04-22T06:54:01Z | `code/dataset.py` (`_read_mid_weekly_xlsx` / `_read_mid_weekly_csv` / `_build_mid_column_name`) · `tests/test_dataset_and_modeling.py::test_mid_weekly_xlsx_wide_format` · 验收 `results/comparison/_audit/T3_1_check.txt` | 列命名 `MID_<PID>_<ind_id>`，指标 meta 同步落 `cache_meta.json`，16/16 单测通过 |
 | T3.2 | 策略 B + 派生因子 | todo | – | – | – |
 | T3.3 | 哑变量验证脚本 | todo | – | – | 仅写脚本；ablation 在 T4.2 后跑 |
 | T4.1 | registry 更新 | todo | – | – | – |
