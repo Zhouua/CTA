@@ -41,6 +41,16 @@ data:
     medium: 20
     long: 60
 
+mid_weekly:
+  available_dummy: true            # emit MID_*_AVAILABLE int8 per level column
+  ffill_max_bars: 8064             # cap ffill staleness (~ 4 weeks @ 5min × 48 × 7 × 4)
+  derived:
+    enabled: true
+    rolling_windows: [4, 13, 52]   # weeks
+    transforms: [ret, zscore, pct_rank]
+  level_keep: true                 # keep raw MID_* level columns alongside derivatives
+  missing_ratio_relax: 0.65        # applied only to MID_* cols, replaces default 0.35
+
 batch_training:
   enforce_registry_coverage: true
   required_data_start: 2021-01-01
