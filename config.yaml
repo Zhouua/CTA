@@ -3,7 +3,7 @@ paths:
   product_data_dir: data/分产品1min主连
   product_registry: data/product_registry.json
   factor_dir: data/factors
-  mid_weekly_dir: data/mid_weekly
+  mid_weekly_dir: data/mid_weekly/_cleaned
   product_cache_dir: results/cache/products
   merged_cache: results/cache/merged_features.parquet
   cache_meta: results/cache/merged_features_meta.json

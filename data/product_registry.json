@@ -41,7 +41,9 @@
       "AGZL.SHF.csv"
     ],
     "category": "unknown",
-    "mid_weekly_files": [],
+    "mid_weekly_files": [
+      "AG.xlsx"
+    ],
     "enabled": true
   },
   {
@@ -102,7 +104,9 @@
       "AUZL.SHF.csv"
     ],
     "category": "unknown",
-    "mid_weekly_files": [],
+    "mid_weekly_files": [
+      "AU.xlsx"
+    ],
     "enabled": true
   },
   {
@@ -117,7 +121,9 @@
       "BZL.DCE.csv"
     ],
     "category": "unknown",
-    "mid_weekly_files": [],
+    "mid_weekly_files": [
+      "B.xlsx"
+    ],
     "enabled": true
   },
   {
@@ -132,7 +138,9 @@
       "BBZL.DCE.csv"
     ],
     "category": "unknown",
-    "mid_weekly_files": [],
+    "mid_weekly_files": [
+      "BB.xlsx"
+    ],
     "enabled": true
   },
   {
@@ -162,7 +170,9 @@
       "BUZL.SHF.csv"
     ],
     "category": "unknown",
-    "mid_weekly_files": [],
+    "mid_weekly_files": [
+      "BU.xlsx"
+    ],
     "enabled": true
   },
   {
@@ -177,7 +187,9 @@
       "CZL.DCE.csv"
     ],
     "category": "unknown",
-    "mid_weekly_files": [],
+    "mid_weekly_files": [
+      "C.xlsx"
+    ],
     "enabled": true
   },
   {
@@ -224,7 +236,9 @@
       "CSZL.DCE.csv"
     ],
     "category": "unknown",
-    "mid_weekly_files": [],
+    "mid_weekly_files": [
+      "CS.xlsx"
+    ],
     "enabled": true
   },
   {
@@ -239,7 +253,9 @@
       "CUZL.SHF.csv"
     ],
     "category": "unknown",
-    "mid_weekly_files": [],
+    "mid_weekly_files": [
+      "CU.xlsx"
+    ],
     "enabled": true
   },
   {
@@ -285,7 +301,9 @@
       "EGZL.DCE.csv"
     ],
     "category": "unknown",
-    "mid_weekly_files": [],
+    "mid_weekly_files": [
+      "EG.xlsx"
+    ],
     "enabled": true
   },
   {
@@ -300,7 +318,9 @@
       "FBZL.DCE.csv"
     ],
     "category": "unknown",
-    "mid_weekly_files": [],
+    "mid_weekly_files": [
+      "FB.xlsx"
+    ],
     "enabled": true
   },
   {
@@ -331,7 +351,9 @@
       "FUZL.SHF.csv"
     ],
     "category": "unknown",
-    "mid_weekly_files": [],
+    "mid_weekly_files": [
+      "FU.xlsx"
+    ],
     "enabled": true
   },
   {
@@ -376,7 +398,9 @@
       "JDZL.DCE.csv"
     ],
     "category": "unknown",
-    "mid_weekly_files": [],
+    "mid_weekly_files": [
+      "JD.xlsx"
+    ],
     "enabled": true
   },
   {
@@ -391,7 +415,9 @@
       "JMZL.DCE.csv"
     ],
     "category": "unknown",
-    "mid_weekly_files": [],
+    "mid_weekly_files": [
+      "JM.xlsx"
+    ],
     "enabled": true
   },
   {
@@ -483,7 +509,9 @@
       "MZL.DCE.csv"
     ],
     "category": "unknown",
-    "mid_weekly_files": [],
+    "mid_weekly_files": [
+      "M.xlsx"
+    ],
     "enabled": true
   },
   {
@@ -545,7 +573,9 @@
       "PBZL.SHF.csv"
     ],
     "category": "unknown",
-    "mid_weekly_files": [],
+    "mid_weekly_files": [
+      "PB.xlsx"
+    ],
     "enabled": true
   },
   {
@@ -576,7 +606,9 @@
       "PGZL.DCE.csv"
     ],
     "category": "unknown",
-    "mid_weekly_files": [],
+    "mid_weekly_files": [
+      "PG.xlsx"
+    ],
     "enabled": true
   },
   {
@@ -670,7 +702,9 @@
       "RBZL.SHF.csv"
     ],
     "category": "unknown",
-    "mid_weekly_files": [],
+    "mid_weekly_files": [
+      "RB.xlsx"
+    ],
     "enabled": true
   },
   {
@@ -717,7 +751,9 @@
       "RRZL.DCE.csv"
     ],
     "category": "unknown",
-    "mid_weekly_files": [],
+    "mid_weekly_files": [
+      "RR.xlsx"
+    ],
     "enabled": true
   },
   {
@@ -748,7 +784,9 @@
       "RUZL.SHF.csv"
     ],
     "category": "unknown",
-    "mid_weekly_files": [],
+    "mid_weekly_files": [
+      "RU.xlsx"
+    ],
     "enabled": true
   },
   {
@@ -827,7 +865,9 @@
       "SNZL.SHF.csv"
     ],
     "category": "unknown",
-    "mid_weekly_files": [],
+    "mid_weekly_files": [
+      "SN.xlsx"
+    ],
     "enabled": true
   },
   {
@@ -842,7 +882,9 @@
       "SPZL.SHF.csv"
     ],
     "category": "unknown",
-    "mid_weekly_files": [],
+    "mid_weekly_files": [
+      "SP.xlsx"
+    ],
     "enabled": true
   },
   {
@@ -920,7 +962,9 @@
       "VZL.DCE.csv"
     ],
     "category": "unknown",
-    "mid_weekly_files": [],
+    "mid_weekly_files": [
+      "V.xlsx"
+    ],
     "enabled": true
   },
   {
@@ -951,7 +995,9 @@
       "WRZL.SHF.csv"
     ],
     "category": "unknown",
-    "mid_weekly_files": [],
+    "mid_weekly_files": [
+      "WR.xlsx"
+    ],
     "enabled": true
   },
   {
@@ -966,7 +1012,9 @@
       "YZL.DCE.csv"
     ],
     "category": "unknown",
-    "mid_weekly_files": [],
+    "mid_weekly_files": [
+      "Y.xlsx"
+    ],
     "enabled": true
   },
   {
@@ -997,7 +1045,9 @@
       "ZNZL.SHF.csv"
     ],
     "category": "unknown",
-    "mid_weekly_files": [],
+    "mid_weekly_files": [
+      "ZN.xlsx"
+    ],
     "enabled": true
   }
 ]
