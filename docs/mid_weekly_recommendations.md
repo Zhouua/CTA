@@ -1,130 +1,460 @@
 # Mid-Weekly Recommendations
 
-基于 `results/runs/20260416_170652/run_summary.csv`，当前真正成功训练过双 regime 模型的品种一共 25 个：
+这版文档只回答一件事：
+
+对于每个能跑模型的品种，`mid_weekly` 里你应该去获取哪些“周频中观变量”。
+
+我这里故意不用 `xxx.csv` 这种文件名写法，而是直接写“变量本身是什么”。
+
+适用范围仍然是最近一轮批量训练中真正 `success` 的 25 个品种：
 
 `AG AU B BB BU C CS CU EG FB FU JD JM M PB PG RB RR RU SN SP V WR Y ZN`
 
-这份建议只覆盖这 25 个品种。
+## 先讲口径
 
-## 先说结论
+- `mid_weekly` 适合放周频中观，不适合再放月频宏观。
+- 每个品种尽量从 4 个层面选变量：
+  - 需求侧
+  - 供给侧
+  - 库存/交割侧
+  - 成本/利润侧
+- 第一版不要贪多。
+  - 大多数品种先上 3 到 5 个周频变量最合适。
+  - 黑色、有色、能化优先级最高。
 
-- `mid_weekly` 在当前代码里不是自动推断的，而是逐品种从 `product_registry.json` 的 `mid_weekly_files` 显式读取。
-- 同一个 `mid_weekly` 文件可以被多个品种复用，不需要每个品种都造一份重复文件。
-- 因子会被 `merge_asof(..., direction="backward")` 后再 `ffill()` 到分钟级，所以更适合放慢频、供需、库存、开工、信用、景气度这类“慢变量”，不适合塞已经被分钟 K 线和成交量捕捉到的短周期技术信号。
-- 当前 `data/mid_weekly/` 还是空目录，所以最合理的做法是：
-  1. 先用仓库里已有的月频宏观表，导出一批可以马上落地的共享文件。
-  2. 再按产业链逐步补每个品种最关键的周频库存/开工/基差。
+## 来源标记
 
-## Mid-Weekly 文件约束
+- `官方`：交易所、农业农村部、国家粮油信息中心、国家粮食交易中心等公开官方/准官方口径
+- `iFinD-SMM`：iFinD 中常见的 SMM 周频产业链指标
+- `iFinD-Mysteel`：iFinD 中常见的 Mysteel 周频产业链指标
+- `iFinD-隆众`：iFinD 中常见的隆众周频产业链指标
+- `iFinD-卓创`：iFinD 中常见的卓创周频产业链指标
+- `低优先级`：周频结构化数据较弱，只建议后手尝试
 
-每个文件最好都满足下面的格式：
+## 在 iFinD 里怎么搜
 
-- 一列时间列，列名可为 `tdate/date/datetime/timestamp/trade_date`
-- 一列数值列
-- 文件名的 stem 会变成特征名，例如 `macro_pmi.csv` 会变成 `MID_macro_pmi`
+优先按下面的中文关键词搜，不要先想文件名：
 
-所以命名尽量直接、稳定，不要把同一含义拆成很多版本。
+- 有色：
+  - `品种 + 社会库存 + 周`
+  - `品种 + 开工率 + 周`
+  - `品种 + 加工费` 或 `TC`
+- 黑色：
+  - `品种 + 社会库存 + 周`
+  - `品种 + 厂库 + 周`
+  - `品种 + 表观需求 + 周`
+  - `品种 + 开工率 + 周`
+- 能化：
+  - `品种 + 港口库存 + 周`
+  - `品种 + 装置开工率 + 周`
+  - `品种 + 下游开工率 + 周`
+  - `品种 + 利润 + 周`
+- 油脂油料：
+  - `品种 + 库存 + 周`
+  - `品种 + 到港 + 周`
+  - `品种 + 压榨量 + 周`
+  - `品种 + 压榨利润 + 周`
+- 养殖：
+  - `品种 + 存栏 + 周`
+  - `品种 + 库存天数 + 周`
+  - `品种 + 饲料成本 + 周`
+  - `品种 + 养殖利润 + 周`
 
-## 第一层：现在就能落地的共享宏观文件
-
-这些都可以直接从 `data/macro/macro_monthly_features_core.csv` 导出来，作为第一批 `mid_weekly` 文件。
-
-| 建议文件名 | 来源列 | 为什么值得先做 |
-| --- | --- | --- |
-| `macro_ppi_yoy.csv` | `ths_PPI_当月同比` | 商品价格环境总开关，几乎对所有工业品都有帮助。 |
-| `macro_cpi_yoy.csv` | `ths_CPI_当月同比` | 对贵金属、农产品和食品链更有用。 |
-| `macro_pmi.csv` | `nbs_制造业采购经理指数_pct` | 宏观景气度确认，适合工业品。 |
-| `macro_new_orders.csv` | `nbs_新订单指数_pct` | 比 PMI 总指数更贴近真实需求扩张。 |
-| `macro_finished_goods_inventory_index.csv` | `nbs_产成品库存指数_pct` | 反映补库/去库阶段，对黑色、能化、有色都常有增量。 |
-| `macro_industrial_production_yoy.csv` | `ths_规模以上工业增加值_当月同比` | 实体生产强度，适合有色、黑色、化工。 |
-| `macro_fai_ytd_yoy.csv` | `nbs_固定资产投资额累计增长_pct` | 中游制造业和基建需求，适合金属和建材链。 |
-| `macro_real_estate_starts_ytd_yoy.csv` | `nbs_房地产新开工施工面积累计增长_pct` | 对黑色、PVC、板材、沥青更关键。 |
-| `macro_new_home_sales_ytd_yoy.csv` | `nbs_新建商品房销售面积累计增长_pct` | 地产后周期需求代理，对板材、PVC、橡胶也有参考价值。 |
-| `macro_credit_impulse.csv` | `afre_社会融资规模存量_growth_pct` | 国内信用脉冲，常领先工业品需求和通胀预期。 |
-
-## 第二层：逐品种建议
-
-原则上每个品种先挂 2 到 3 个“能马上做”的共享宏观文件，再补 1 到 2 个真正有产业链辨识度的周频因子，效果通常比一口气堆很多慢变量更稳。
+## 逐品种建议
 
 ### 贵金属
 
-| 品种 | 现在先加 | 后续优先补的周频 | 原因 |
-| --- | --- | --- | --- |
-| `AU` | `macro_cpi_yoy.csv`, `macro_ppi_yoy.csv`, `macro_credit_impulse.csv` | `gold_etf_holding.csv`, `us_real_yield_10y.csv` | 黄金更吃通胀预期和流动性环境；分钟级价格因子已经有了，慢变量要补“通胀/利率/资金”这条线。 |
-| `AG` | `macro_cpi_yoy.csv`, `macro_ppi_yoy.csv`, `macro_credit_impulse.csv` | `silver_etf_holding.csv`, `gold_silver_ratio.csv` | 白银兼具贵金属和工业属性，既受通胀预期影响，也受风险偏好和金银比驱动。 |
+#### `AU` 黄金
+
+- 需求侧：SPDR 黄金 ETF 持仓，来源 `官方`
+- 需求侧：CFTC COMEX 黄金非商业净多持仓，来源 `官方`
+- 供给侧：COMEX 黄金库存，来源 `官方`
+- 库存/交割侧：上期所黄金库存周报，来源 `官方`
+- 库存/交割侧：上期所黄金仓单，来源 `官方`
+- 成本/比价侧：沪伦金比值，来源 `iFinD`
+- 首批先取：
+  - SPDR 黄金 ETF 持仓
+  - 上期所黄金库存周报
+  - 上期所黄金仓单
+  - CFTC COMEX 黄金非商业净多持仓
+
+#### `AG` 白银
+
+- 需求侧：SLV 白银 ETF 持仓，来源 `官方`
+- 需求侧：CFTC COMEX 白银非商业净多持仓，来源 `官方`
+- 供给侧：COMEX 白银库存，来源 `官方`
+- 库存/交割侧：上期所白银库存周报，来源 `官方`
+- 库存/交割侧：上期所白银仓单，来源 `官方`
+- 成本/比价侧：金银比，来源 `iFinD`
+- 首批先取：
+  - SLV 白银 ETF 持仓
+  - 上期所白银库存周报
+  - 上期所白银仓单
+  - CFTC COMEX 白银非商业净多持仓
 
 ### 有色
 
-| 品种 | 现在先加 | 后续优先补的周频 | 原因 |
-| --- | --- | --- | --- |
-| `CU` | `macro_new_orders.csv`, `macro_industrial_production_yoy.csv`, `macro_fai_ytd_yoy.csv` | `shfe_cu_inventory.csv`, `copper_spot_premium.csv` | 铜是最典型的顺周期工业金属，订单、工业生产和投资强度都直接影响定价。 |
-| `PB` | `macro_new_orders.csv`, `macro_industrial_production_yoy.csv`, `macro_fai_ytd_yoy.csv` | `shfe_pb_inventory.csv`, `lead_battery_output_yoy.csv` | 铅更贴近蓄电池和汽车链，宏观需求之外，库存和下游电池开工会明显补充解释力。 |
-| `SN` | `macro_new_orders.csv`, `macro_industrial_production_yoy.csv`, `macro_credit_impulse.csv` | `shfe_sn_inventory.csv`, `electronics_production_yoy.csv` | 锡受电子制造链影响更强，信用和制造订单扩张时往往更敏感。 |
-| `ZN` | `macro_new_orders.csv`, `macro_industrial_production_yoy.csv`, `macro_fai_ytd_yoy.csv` | `shfe_zn_inventory.csv`, `galvanized_sheet_output_yoy.csv` | 锌和镀锌、基建、制造强相关，库存与订单组合通常比单看价格更有前瞻性。 |
+#### `CU` 铜
+
+- 需求侧：精铜杆企业开工率，来源 `iFinD-SMM`
+- 需求侧：电线电缆企业开工率，来源 `iFinD-SMM`
+- 供给侧：保税区铜库存，来源 `iFinD-SMM`
+- 库存/交割侧：铜社会库存，来源 `iFinD-SMM`
+- 库存/交割侧：上期所铜库存周报，来源 `官方`
+- 成本/利润侧：铜精矿加工费 TC，来源 `iFinD-SMM`
+- 首批先取：
+  - 精铜杆企业开工率
+  - 铜社会库存
+  - 上期所铜库存周报
+  - 铜精矿加工费 TC
+
+#### `PB` 铅
+
+- 需求侧：铅蓄电池企业开工率，来源 `iFinD-SMM`
+- 供给侧：原生铅冶炼厂开工率，来源 `iFinD-SMM`
+- 供给侧：再生铅冶炼厂开工率，来源 `iFinD-SMM`
+- 库存/交割侧：上期所铅库存周报，来源 `官方`
+- 库存/交割侧：上期所铅仓单，来源 `官方`
+- 成本/利润侧：再生铅利润，来源 `iFinD-SMM`
+- 首批先取：
+  - 铅蓄电池企业开工率
+  - 原生铅冶炼厂开工率
+  - 上期所铅库存周报
+  - 再生铅利润
+
+#### `SN` 锡
+
+- 需求侧：焊料企业开工率，来源 `iFinD-SMM`
+- 供给侧：精炼锡冶炼厂开工率，来源 `iFinD-SMM`
+- 库存/交割侧：上期所锡库存周报，来源 `官方`
+- 库存/交割侧：LME 锡库存，来源 `官方`
+- 成本/利润侧：锡精矿加工费，来源 `iFinD-SMM`
+- 首批先取：
+  - 焊料企业开工率
+  - 精炼锡冶炼厂开工率
+  - 上期所锡库存周报
+  - 锡精矿加工费
+
+#### `ZN` 锌
+
+- 需求侧：镀锌企业开工率，来源 `iFinD-SMM`
+- 需求侧：锌合金企业开工率，来源 `iFinD-SMM`
+- 需求侧：氧化锌企业开工率，来源 `iFinD-SMM`
+- 供给侧：精炼锌冶炼厂开工率，来源 `iFinD-SMM`
+- 库存/交割侧：上期所锌库存周报，来源 `官方`
+- 库存/交割侧：上期所锌仓单，来源 `官方`
+- 成本/利润侧：锌精矿加工费 TC，来源 `iFinD-SMM`
+- 首批先取：
+  - 镀锌企业开工率
+  - 精炼锌冶炼厂开工率
+  - 上期所锌库存周报
+  - 锌精矿加工费 TC
 
 ### 黑色和建材
 
-| 品种 | 现在先加 | 后续优先补的周频 | 原因 |
-| --- | --- | --- | --- |
-| `RB` | `macro_real_estate_starts_ytd_yoy.csv`, `macro_fai_ytd_yoy.csv`, `macro_new_orders.csv` | `rebar_social_inventory.csv`, `steel_mill_inventory.csv` | 螺纹核心在地产和基建，库存数据又是最直接的产业链温度计。 |
-| `WR` | `macro_real_estate_starts_ytd_yoy.csv`, `macro_fai_ytd_yoy.csv`, `macro_new_orders.csv` | `wire_rod_inventory.csv`, `steel_mill_inventory.csv` | 线材与螺纹的需求逻辑接近，先复用黑色地产链宏观，再补钢材周频库存。 |
-| `JM` | `macro_new_orders.csv`, `macro_industrial_production_yoy.csv`, `macro_real_estate_starts_ytd_yoy.csv` | `coking_coal_port_inventory.csv`, `coke_inventory.csv` | 焦煤最终仍走向钢厂需求，订单和地产链景气能定方向，港口库存能定节奏。 |
-| `BU` | `macro_real_estate_starts_ytd_yoy.csv`, `macro_fai_ytd_yoy.csv`, `macro_ppi_yoy.csv` | `asphalt_social_inventory.csv`, `asphalt_plant_operating_rate.csv` | 沥青兼有原油成本和基建需求双重属性，地产/基建慢变量加库存开工最合适。 |
-| `BB` | `macro_real_estate_starts_ytd_yoy.csv`, `macro_new_home_sales_ytd_yoy.csv`, `macro_credit_impulse.csv` | `wood_panel_inventory.csv`, `home_furnishing_demand_index.csv` | 胶板的直接周频数据通常少，先挂地产后周期和信用代理变量最现实。 |
-| `FB` | `macro_real_estate_starts_ytd_yoy.csv`, `macro_new_home_sales_ytd_yoy.csv`, `macro_credit_impulse.csv` | `fiberboard_inventory.csv`, `home_furnishing_demand_index.csv` | 纤板和地产竣工、家具链更相关，先用后周期需求代理，等有行业库存再补。 |
+#### `RB` 螺纹钢
+
+- 需求侧：螺纹钢表观需求，来源 `iFinD-Mysteel`
+- 需求侧：建筑钢材成交量，来源 `iFinD-Mysteel`
+- 供给侧：高炉开工率，来源 `iFinD-Mysteel`
+- 供给侧：电炉开工率，来源 `iFinD-Mysteel`
+- 供给侧：螺纹钢周产量，来源 `iFinD-Mysteel`
+- 库存/交割侧：螺纹钢社会库存，来源 `iFinD-Mysteel`
+- 库存/交割侧：螺纹钢钢厂库存，来源 `iFinD-Mysteel`
+- 库存/交割侧：上期所螺纹钢库存周报，来源 `官方`
+- 成本/利润侧：螺纹钢钢厂利润，来源 `iFinD-Mysteel`
+- 首批先取：
+  - 螺纹钢社会库存
+  - 螺纹钢钢厂库存
+  - 螺纹钢表观需求
+  - 高炉开工率
+  - 上期所螺纹钢库存周报
+
+#### `WR` 线材
+
+- 需求侧：线材表观需求，来源 `iFinD-Mysteel`
+- 需求侧：建筑钢材成交量，来源 `iFinD-Mysteel`
+- 供给侧：线材周产量，来源 `iFinD-Mysteel`
+- 供给侧：高炉开工率，来源 `iFinD-Mysteel`
+- 库存/交割侧：线材社会库存，来源 `iFinD-Mysteel`
+- 库存/交割侧：线材钢厂库存，来源 `iFinD-Mysteel`
+- 库存/交割侧：上期所线材库存周报，来源 `官方`
+- 成本/利润侧：建筑钢材利润，来源 `iFinD-Mysteel`
+- 首批先取：
+  - 线材社会库存
+  - 线材钢厂库存
+  - 建筑钢材成交量
+  - 上期所线材库存周报
+
+#### `JM` 焦煤
+
+- 需求侧：铁水产量，来源 `iFinD-Mysteel`
+- 需求侧：钢厂焦煤库存可用天数，来源 `iFinD-Mysteel`
+- 供给侧：焦煤矿山开工率，来源 `iFinD-Mysteel`
+- 供给侧：洗煤厂开工率，来源 `iFinD-Mysteel`
+- 库存/交割侧：港口焦煤库存，来源 `iFinD-Mysteel`
+- 库存/交割侧：大商所焦煤仓单，来源 `官方`
+- 成本/利润侧：焦煤-焦炭价差，来源 `iFinD-Mysteel`
+- 首批先取：
+  - 港口焦煤库存
+  - 焦煤矿山开工率
+  - 铁水产量
+  - 大商所焦煤仓单
+
+#### `BU` 石油沥青
+
+- 需求侧：沥青出货量，来源 `iFinD-隆众`
+- 供给侧：沥青装置开工率，来源 `iFinD-隆众`
+- 供给侧：炼厂沥青产量，来源 `iFinD-隆众`
+- 库存/交割侧：炼厂沥青库存，来源 `iFinD-隆众`
+- 库存/交割侧：社会沥青库存，来源 `iFinD-隆众`
+- 库存/交割侧：上期所沥青库存周报，来源 `官方`
+- 成本/利润侧：沥青裂解价差或沥青利润，来源 `iFinD`
+- 首批先取：
+  - 沥青装置开工率
+  - 社会沥青库存
+  - 炼厂沥青库存
+  - 沥青出货量
+
+#### `BB` 胶合板
+
+- 需求侧：30 大中城市商品房成交面积，来源 `iFinD`
+- 供给侧：人造板行业开工率，来源 `低优先级`
+- 库存/交割侧：大商所胶合板仓单，来源 `官方`
+- 成本/利润侧：原木或板材成本指标，来源 `低优先级`
+- 首批先取：
+  - 大商所胶合板仓单
+  - 30 大中城市商品房成交面积
+- 备注：
+  - `BB` 结构化周频源较弱，第一版只建议上 1 到 2 个高可信变量。
+
+#### `FB` 纤维板
+
+- 需求侧：30 大中城市商品房成交面积，来源 `iFinD`
+- 供给侧：纤维板行业开工率，来源 `低优先级`
+- 库存/交割侧：大商所纤维板仓单，来源 `官方`
+- 成本/利润侧：板材利润指标，来源 `低优先级`
+- 首批先取：
+  - 大商所纤维板仓单
+  - 30 大中城市商品房成交面积
+- 备注：
+  - `FB` 和 `BB` 一样，不建议第一版堆很多弱变量。
 
 ### 能化
 
-| 品种 | 现在先加 | 后续优先补的周频 | 原因 |
-| --- | --- | --- | --- |
-| `EG` | `macro_new_orders.csv`, `macro_pmi.csv`, `macro_finished_goods_inventory_index.csv` | `eg_port_inventory.csv`, `polyester_operating_rate.csv` | 乙二醇本质上看聚酯链景气，订单和产成品库存能给出补库线索，港口库存和聚酯开工更直接。 |
-| `PG` | `macro_new_orders.csv`, `macro_pmi.csv`, `macro_ppi_yoy.csv` | `lpg_port_inventory.csv`, `pdh_operating_rate.csv` | LPG 兼有燃料和化工原料属性，景气和成本环境先定大方向，港口库存和 PDH 开工补细节。 |
-| `FU` | `macro_ppi_yoy.csv`, `macro_pmi.csv`, `macro_credit_impulse.csv` | `fuel_oil_inventory.csv`, `refinery_throughput.csv` | 燃油受成本端和炼厂开工影响大，单靠分钟价量往往抓不到基本面切换。 |
-| `RU` | `macro_new_orders.csv`, `macro_new_home_sales_ytd_yoy.csv`, `macro_pmi.csv` | `ru_qingdao_inventory.csv`, `tire_operating_rate.csv` | 橡胶最终看轮胎和汽车链，青岛库存和轮胎开工是很强的慢变量。 |
-| `V` | `macro_real_estate_starts_ytd_yoy.csv`, `macro_new_home_sales_ytd_yoy.csv`, `macro_new_orders.csv` | `pvc_social_inventory.csv`, `pvc_downstream_operating_rate.csv` | PVC 对地产需求敏感，但交易节奏往往由社会库存和下游开工决定。 |
-| `SP` | `macro_new_orders.csv`, `macro_pmi.csv`, `macro_credit_impulse.csv` | `pulp_port_inventory.csv`, `paper_mill_operating_rate.csv` | 纸浆更接近制造业和包装纸链，订单与信用能定大背景，港口库存和纸厂开工补供需变化。 |
+#### `EG` 乙二醇
+
+- 需求侧：聚酯工厂开工负荷，来源 `iFinD-隆众`
+- 需求侧：江浙织机开工率，来源 `iFinD-隆众`
+- 供给侧：乙二醇装置开工率，来源 `iFinD-隆众`
+- 供给侧：煤制乙二醇开工率，来源 `iFinD-隆众`
+- 库存/交割侧：乙二醇港口库存，来源 `iFinD-隆众`
+- 成本/利润侧：乙二醇现金流利润，来源 `iFinD-隆众`
+- 首批先取：
+  - 聚酯工厂开工负荷
+  - 乙二醇装置开工率
+  - 乙二醇港口库存
+  - 乙二醇现金流利润
+
+#### `PG` 液化石油气
+
+- 需求侧：PDH 开工率，来源 `iFinD-隆众`
+- 需求侧：MTBE 开工率，来源 `iFinD-隆众`
+- 供给侧：液化气到港量，来源 `iFinD-隆众`
+- 供给侧：炼厂液化气商品量，来源 `iFinD-隆众`
+- 库存/交割侧：液化气港口库存，来源 `iFinD-隆众`
+- 库存/交割侧：液化气企业库存，来源 `iFinD-隆众`
+- 库存/交割侧：大商所 LPG 仓单，来源 `官方`
+- 成本/利润侧：PDH 利润，来源 `iFinD-隆众`
+- 首批先取：
+  - PDH 开工率
+  - 液化气港口库存
+  - 液化气到港量
+  - PDH 利润
+
+#### `FU` 燃料油
+
+- 需求侧：船燃需求，来源 `iFinD-隆众`
+- 供给侧：炼厂渣油或燃料油产量，来源 `iFinD-隆众`
+- 库存/交割侧：新加坡燃料油库存，来源 `iFinD-隆众`
+- 库存/交割侧：国内燃料油库存，来源 `iFinD-隆众`
+- 库存/交割侧：上期所燃料油库存周报，来源 `官方`
+- 成本/利润侧：燃料油裂解价差，来源 `iFinD`
+- 首批先取：
+  - 新加坡燃料油库存
+  - 国内燃料油库存
+  - 上期所燃料油库存周报
+  - 燃料油裂解价差
+
+#### `RU` 天然橡胶
+
+- 需求侧：全钢胎开工率，来源 `iFinD-隆众`
+- 需求侧：半钢胎开工率，来源 `iFinD-隆众`
+- 供给侧：天然橡胶到港量，来源 `iFinD-隆众`
+- 库存/交割侧：青岛保税区天然橡胶库存，来源 `iFinD-隆众`
+- 库存/交割侧：青岛一般贸易天然橡胶库存，来源 `iFinD-隆众`
+- 库存/交割侧：上期所天然橡胶库存周报，来源 `官方`
+- 成本/利润侧：天然橡胶-合成橡胶价差，来源 `iFinD`
+- 首批先取：
+  - 全钢胎开工率
+  - 半钢胎开工率
+  - 青岛保税区天然橡胶库存
+  - 青岛一般贸易天然橡胶库存
+  - 上期所天然橡胶库存周报
+
+#### `V` 聚氯乙烯
+
+- 需求侧：PVC 管材企业开工率，来源 `iFinD-隆众`
+- 需求侧：PVC 型材企业开工率，来源 `iFinD-隆众`
+- 供给侧：PVC 装置开工率，来源 `iFinD-隆众`
+- 库存/交割侧：PVC 社会库存或第三方库存，来源 `iFinD-隆众`
+- 库存/交割侧：大商所 PVC 仓单，来源 `官方`
+- 成本/利润侧：电石法 PVC 利润，来源 `iFinD-隆众`
+- 首批先取：
+  - PVC 管材企业开工率
+  - PVC 型材企业开工率
+  - PVC 装置开工率
+  - PVC 社会库存
+
+#### `SP` 纸浆
+
+- 需求侧：纸厂开工率，来源 `iFinD-隆众`
+- 需求侧：成品纸库存，来源 `iFinD-隆众`
+- 供给侧：纸浆到港量，来源 `iFinD-隆众`
+- 库存/交割侧：纸浆港口库存，来源 `iFinD-隆众`
+- 库存/交割侧：上期所纸浆库存周报，来源 `官方`
+- 成本/利润侧：纸浆进口成本，来源 `iFinD`
+- 首批先取：
+  - 纸厂开工率
+  - 纸浆港口库存
+  - 上期所纸浆库存周报
+  - 纸浆进口成本
 
 ### 农产品和养殖
 
-| 品种 | 现在先加 | 后续优先补的周频 | 原因 |
-| --- | --- | --- | --- |
-| `B` | `macro_cpi_yoy.csv`, `macro_credit_impulse.csv` | `soybean_port_inventory.csv`, `soybean_arrival_forecast.csv`, `soybean_crush_margin.csv` | 豆二真正有效的是进口到港、压榨和港口库存；宏观只建议放一个轻量代理，不要喧宾夺主。 |
-| `M` | `macro_cpi_yoy.csv`, `macro_credit_impulse.csv` | `soymeal_inventory.csv`, `oil_mill_operating_rate.csv`, `hog_profit.csv` | 豆粕更受压榨节奏和养殖利润影响，慢变量应该围绕库存、开工、下游利润。 |
-| `Y` | `macro_cpi_yoy.csv`, `macro_ppi_yoy.csv` | `soybean_oil_inventory.csv`, `palm_oil_port_inventory.csv`, `crush_margin.csv` | 豆油价格更多受油脂库存和压榨利润驱动，通胀环境只适合作为辅助。 |
-| `C` | `macro_cpi_yoy.csv`, `macro_industrial_production_yoy.csv` | `corn_port_inventory.csv`, `deep_processing_profit.csv`, `feed_demand_index.csv` | 玉米既有饲料需求也有深加工需求，库存和加工利润比宏观总量更关键。 |
-| `CS` | `macro_cpi_yoy.csv`, `macro_industrial_production_yoy.csv` | `corn_starch_inventory.csv`, `corn_starch_processing_profit.csv` | 玉米淀粉和下游加工利润、成品库存强相关，适合补一组加工链因子。 |
-| `RR` | `macro_cpi_yoy.csv` | `rice_inventory.csv`, `rice_auction_volume.csv` | 粳米更偏政策和库存驱动，宏观景气帮助有限，优先找库存和拍卖投放数据。 |
-| `JD` | `macro_cpi_yoy.csv` | `egg_inventory_days.csv`, `layer_hen_stock.csv`, `feed_cost_index.csv` | 鸡蛋最怕只看盘口；存栏、库存天数、饲料成本才是慢变量核心。 |
+#### `B` 黄大豆2号
 
-## 我建议的落地顺序
+- 需求侧：大豆周度压榨量，来源 `官方 / 国家粮油信息中心`
+- 供给侧：进口大豆港口库存，来源 `官方 / 国家粮油信息中心`
+- 供给侧：进口大豆到港预报，来源 `官方 / 国家粮油信息中心`
+- 库存/交割侧：大商所豆二仓单，来源 `官方`
+- 成本/利润侧：大豆压榨利润，来源 `iFinD`
+- 首批先取：
+  - 进口大豆港口库存
+  - 进口大豆到港预报
+  - 大豆周度压榨量
+  - 大商所豆二仓单
 
-1. 先从 `macro_monthly_features_core.csv` 导出 8 到 10 个共享宏观文件，放进 `data/mid_weekly/`。
-2. 优先给工业品里已经跑得最稳的品种挂上：
-   - `RB`, `CU`, `RU`, `EG`, `V`, `JM`
-3. 再给农产品里供需链最清楚的品种挂上：
-   - `M`, `Y`, `C`, `JD`
-4. `BB`, `FB`, `RR` 这类行业周频公开数据不太好找，先只挂共享宏观文件，不建议一开始硬塞很多质量不高的“伪周频”数据。
+#### `M` 豆粕
 
-## 不建议的做法
+- 需求侧：猪粮比，来源 `官方`
+- 需求侧：豆粕现货价格周度监测，来源 `官方`
+- 供给侧：大豆周度压榨量，来源 `官方 / 国家粮油信息中心`
+- 库存/交割侧：豆粕库存，来源 `官方 / 国家粮油信息中心`
+- 库存/交割侧：大商所豆粕仓单，来源 `官方`
+- 成本/利润侧：大豆压榨利润，来源 `iFinD`
+- 首批先取：
+  - 豆粕库存
+  - 大豆周度压榨量
+  - 猪粮比
+  - 大豆压榨利润
 
-- 不要把同一逻辑拆成很多高度重复的慢变量一起挂进去，例如同时放 5 个几乎等价的地产指标。
-- 不要给所有品种统一挂完全相同的一组 `mid_weekly` 文件。
-- 不要把已经在分钟级 runtime factors 里充分体现的价量型技术指标，再降采样一遍塞进 `mid_weekly`。
-- 不要一开始就给每个品种挂 6 到 10 个慢变量；目前这套模型更适合每个品种先挂 2 到 4 个高辨识度因子。
+#### `Y` 豆油
 
-## 最小可执行版本
+- 需求侧：包装油需求或成交跟踪，来源 `iFinD`
+- 供给侧：大豆周度压榨量，来源 `官方 / 国家粮油信息中心`
+- 库存/交割侧：豆油商业库存，来源 `官方 / 国家粮油信息中心`
+- 库存/交割侧：棕榈油港口库存，来源 `官方 / 国家粮油信息中心`
+- 库存/交割侧：大商所豆油仓单，来源 `官方`
+- 成本/利润侧：大豆压榨利润，来源 `iFinD`
+- 首批先取：
+  - 豆油商业库存
+  - 棕榈油港口库存
+  - 大豆周度压榨量
+  - 大豆压榨利润
 
-如果你想先快速做一版，不想一次性补太多外部数据，我建议先只做下面这 10 个共享文件：
+#### `C` 玉米
 
-- `macro_ppi_yoy.csv`
-- `macro_cpi_yoy.csv`
-- `macro_pmi.csv`
-- `macro_new_orders.csv`
-- `macro_finished_goods_inventory_index.csv`
-- `macro_industrial_production_yoy.csv`
-- `macro_fai_ytd_yoy.csv`
-- `macro_real_estate_starts_ytd_yoy.csv`
-- `macro_new_home_sales_ytd_yoy.csv`
-- `macro_credit_impulse.csv`
+- 需求侧：深加工玉米消费量，来源 `iFinD`
+- 需求侧：饲料需求跟踪，来源 `iFinD`
+- 供给侧：北方港口玉米库存，来源 `官方 / 国家粮油信息中心`
+- 供给侧：广东港口玉米库存，来源 `官方 / 国家粮油信息中心`
+- 供给侧：玉米售粮进度，来源 `官方 / 国家粮油信息中心`
+- 库存/交割侧：大商所玉米仓单，来源 `官方`
+- 成本/利润侧：玉米深加工利润，来源 `iFinD`
+- 首批先取：
+  - 北方港口玉米库存
+  - 广东港口玉米库存
+  - 玉米售粮进度
+  - 玉米深加工利润
 
-然后按上面的分品种建议，把这些共享文件先挂进 `product_registry.json`。等第一轮验证完，再逐步补每个产业链真正有辨识度的周频库存/开工/基差因子。
+#### `CS` 玉米淀粉
+
+- 需求侧：玉米淀粉走货量，来源 `iFinD-Mysteel` 或 `iFinD-卓创`
+- 供给侧：玉米淀粉企业开工率，来源 `iFinD-Mysteel` 或 `iFinD-卓创`
+- 供给侧：玉米淀粉周产量，来源 `iFinD-Mysteel` 或 `iFinD-卓创`
+- 库存/交割侧：玉米淀粉库存，来源 `iFinD-Mysteel` 或 `iFinD-卓创`
+- 库存/交割侧：大商所玉米淀粉仓单，来源 `官方`
+- 成本/利润侧：玉米淀粉加工利润，来源 `iFinD`
+- 首批先取：
+  - 玉米淀粉企业开工率
+  - 玉米淀粉周产量
+  - 玉米淀粉库存
+  - 玉米淀粉加工利润
+
+#### `JD` 鸡蛋
+
+- 需求侧：鸡蛋批发价格周度监测，来源 `官方 / 农业农村部`
+- 需求侧：鸡蛋零售价格周度监测，来源 `官方 / 农业农村部`
+- 供给侧：在产蛋鸡存栏，来源 `iFinD`
+- 供给侧：鸡苗价格，来源 `iFinD`
+- 库存/流通侧：鸡蛋库存天数，来源 `iFinD`
+- 成本/利润侧：蛋鸡饲料成本，来源 `官方 / 农业农村部`
+- 成本/利润侧：蛋鸡养殖利润，来源 `iFinD`
+- 首批先取：
+  - 鸡蛋库存天数
+  - 在产蛋鸡存栏
+  - 蛋鸡饲料成本
+  - 鸡蛋批发价格周度监测
+
+#### `RR` 粳米
+
+- 需求侧：稻谷竞价成交量或成交率，来源 `官方 / 国家粮食交易中心`
+- 供给侧：稻米加工供给跟踪，来源 `低优先级`
+- 库存/交割侧：大商所粳米仓单，来源 `官方`
+- 库存/交割侧：粳米库存，来源 `低优先级`
+- 成本/利润侧：稻米加工利润，来源 `低优先级`
+- 首批先取：
+  - 大商所粳米仓单
+  - 稻谷竞价成交量或成交率
+- 备注：
+  - `RR` 的高质量周频中观源最少，建议极简处理。
+
+## 第一批最值得先落地的 10 个品种
+
+如果你现在准备开始真的做 `mid_weekly` 数据，我建议先做这 10 个：
+
+1. `RB`
+2. `CU`
+3. `RU`
+4. `EG`
+5. `V`
+6. `M`
+7. `Y`
+8. `C`
+9. `JD`
+10. `ZN`
+
+原因很直接：
+
+- 这些品种的周频中观链条更完整。
+- `需求 / 供给 / 库存 / 利润` 四层都比较容易找到结构化序列。
+- 比 `BB`、`FB`、`RR` 这种弱数据品种更适合先验证 `mid_weekly` 是否真的提升模型。
+
+## 最后一句判断标准
+
+如果一个变量满足下面三点，就适合放进 `mid_weekly`：
+
+- 它是周频或准周频
+- 它代表产业链慢变量，而不是分钟价量的重复表达
+- 它能解释“为什么这个品种这周更容易走趋势或拐点”
