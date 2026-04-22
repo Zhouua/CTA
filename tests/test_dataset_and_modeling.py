@@ -106,8 +106,10 @@ class DatasetAndModelingTest(unittest.TestCase):
             raw = builder._read_raw_data()
             merged, mid_cols = builder._merge_mid_weekly_features(raw)
 
-            self.assertEqual(mid_cols, ["MID_inventory"])
+            # level col + AVAILABLE dummy in that order (derived disabled via < 4 obs).
+            self.assertEqual(mid_cols, ["MID_inventory", "MID_inventory_AVAILABLE"])
             self.assertEqual(merged["MID_inventory"].tolist(), [100.0, 100.0, 200.0])
+            self.assertEqual(merged["MID_inventory_AVAILABLE"].tolist(), [1, 1, 1])
 
     def test_mid_weekly_xlsx_wide_format(self) -> None:
         """T3.1: xlsx wide-format reader. 4-row header + multi-indicator + NaN tail."""
@@ -184,9 +186,10 @@ class DatasetAndModelingTest(unittest.TestCase):
             raw = builder._read_raw_data()
             merged, mid_cols = builder._merge_mid_weekly_features(raw)
 
-            # Two MID_* columns exist and carry the product prefix.
-            self.assertEqual(len(mid_cols), 2)
-            for col in mid_cols:
+            # Two level MID_* columns exist and carry the product prefix.
+            level_cols = [c for c in mid_cols if not c.endswith("_AVAILABLE") and "_RET_" not in c and "_ZSCORE_" not in c and "_PCT_RANK_" not in c]
+            self.assertEqual(len(level_cols), 2)
+            for col in level_cols:
                 self.assertTrue(col.startswith("MID_RB_"), f"column {col} missing MID_RB_ prefix")
             # Column-level metadata persisted with frequency / indicator_id.
             self.assertEqual(len(builder._mid_weekly_metadata), 2)
@@ -196,8 +199,8 @@ class DatasetAndModelingTest(unittest.TestCase):
 
             # Timestamp alignment: value at the Monday bar == that Monday's xlsx value
             # (backward merge_asof picks the same-day record).
-            ind_a = next(c for c in mid_cols if builder._mid_weekly_metadata[c]["indicator_id"] == "S123456")
-            ind_b = next(c for c in mid_cols if builder._mid_weekly_metadata[c]["indicator_id"] == "S789012")
+            ind_a = next(c for c in level_cols if builder._mid_weekly_metadata[c]["indicator_id"] == "S123456")
+            ind_b = next(c for c in level_cols if builder._mid_weekly_metadata[c]["indicator_id"] == "S789012")
 
             def at(ts: str) -> pd.Series:
                 row = merged.loc[merged["TDATE"] == pd.Timestamp(ts)]
@@ -223,6 +226,114 @@ class DatasetAndModelingTest(unittest.TestCase):
             # row for 01-15 has indB blank, so the aligned value stays 82.0.
             self.assertAlmostEqual(float(at("2024-01-15 09:00:00")[ind_b]), 82.0, places=3)
             self.assertAlmostEqual(float(at("2024-01-19 14:55:00")[ind_b]), 82.0, places=3)
+
+    def test_mid_weekly_strategy_b_available_clamp_and_derived(self) -> None:
+        """T3.2: MID_*_AVAILABLE dummy, ffill_max_bars clamp, derived RET/ZSCORE/PCT_RANK."""
+        import openpyxl
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            raw_path = root / "RBZL.SHF.csv"
+            mid_dir = root / "mid_weekly"
+            mid_dir.mkdir()
+            merged_cache = root / "cache.parquet"
+            cache_meta = root / "cache_meta.json"
+            regime_plot = root / "regime_plot.png"
+
+            # 6 weekly Mondays' worth of 5-min bars (so derived window=4 can emit).
+            raw_index = pd.date_range("2024-01-01 09:00:00", "2024-02-09 14:55:00", freq="5min")
+            raw_index = raw_index[(raw_index.hour >= 9) & (raw_index.hour < 15) & (raw_index.weekday < 5)]
+            raw_df = pd.DataFrame({
+                "TDATE": raw_index,
+                "OPEN": np.arange(len(raw_index), dtype=float) + 1.0,
+                "HIGH": np.arange(len(raw_index), dtype=float) + 2.0,
+                "LOW": np.arange(len(raw_index), dtype=float),
+                "CLOSE": np.arange(len(raw_index), dtype=float) + 1.5,
+                "VOLUME": 10,
+                "AMOUNT": 100,
+            })
+            raw_df.to_csv(raw_path, index=False)
+
+            # xlsx with 1 indicator, 6 observations, all present.
+            xlsx_path = mid_dir / "RB.xlsx"
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.cell(row=1, column=1, value="单位"); ws.cell(row=1, column=2, value="万吨")
+            ws.cell(row=2, column=1, value="指标名称"); ws.cell(row=2, column=2, value="螺纹钢社会库存")
+            ws.cell(row=3, column=1, value="频率"); ws.cell(row=3, column=2, value="周")
+            ws.cell(row=4, column=1, value="指标ID"); ws.cell(row=4, column=2, value="S999001")
+            # Descending dates matching real xlsx layout.
+            for row_idx, (date_str, value) in enumerate([
+                ("2024-02-05", 320.0),  # Mon week 6
+                ("2024-01-29", 315.0),
+                ("2024-01-22", 310.0),
+                ("2024-01-15", 305.0),
+                ("2024-01-08", 300.0),
+                ("2024-01-01", 290.0),
+            ], start=5):
+                ws.cell(row=row_idx, column=1, value=pd.Timestamp(date_str))
+                ws.cell(row=row_idx, column=2, value=value)
+            wb.save(xlsx_path)
+
+            # Tight clamp: 20 5-min bars of staleness max — forces NaN shortly after each Monday.
+            builder = FactorDatasetBuilder(
+                config_override={
+                    "paths": {
+                        "raw_data": str(raw_path),
+                        "merged_cache": str(merged_cache),
+                        "cache_meta": str(cache_meta),
+                        "regime_plot": str(regime_plot),
+                        "mid_weekly_dir": str(mid_dir),
+                    },
+                    "data": {"use_mid_weekly": True},
+                    "product": {"product_id": "RB", "mid_weekly_files": ["RB.xlsx"]},
+                    "mid_weekly": {
+                        "available_dummy": True,
+                        "ffill_max_bars": 20,
+                        "level_keep": True,
+                        "derived": {
+                            "enabled": True,
+                            "rolling_windows": [4],
+                            "transforms": ["ret", "zscore", "pct_rank"],
+                        },
+                    },
+                }
+            )
+            raw = builder._read_raw_data()
+            merged, mid_cols = builder._merge_mid_weekly_features(raw)
+
+            # Bucket the columns.
+            level = [c for c in mid_cols if not c.endswith("_AVAILABLE") and all(s not in c for s in ("_RET_", "_ZSCORE_", "_PCT_RANK_"))]
+            avail = [c for c in mid_cols if c.endswith("_AVAILABLE")]
+            derived = [c for c in mid_cols if any(s in c for s in ("_RET_", "_ZSCORE_", "_PCT_RANK_"))]
+
+            self.assertEqual(len(level), 1, f"expected 1 level col, got {level}")
+            self.assertEqual(len(avail), 1, f"expected 1 AVAILABLE col, got {avail}")
+            # window=4 × 3 transforms = 3 derived cols for the single indicator.
+            self.assertEqual(len(derived), 3, f"expected 3 derived cols, got {derived}")
+
+            level_col = level[0]
+            avail_col = avail[0]
+
+            # Clamp correctness: Monday 01-08 09:00 — brand-new arrival → level not NaN,
+            # AVAILABLE=1. Bar roughly 21 5-min steps later on the same day must be
+            # NaN'd out (staleness > ffill_max_bars=20) and AVAILABLE must flip to 0.
+            mon_idx = merged.index[merged["TDATE"] == pd.Timestamp("2024-01-08 09:00:00")][0]
+            self.assertFalse(pd.isna(merged.loc[mon_idx, level_col]))
+            self.assertEqual(int(merged.loc[mon_idx, avail_col]), 1)
+            stale_idx = merged.index[merged["TDATE"] == pd.Timestamp("2024-01-08 11:00:00")][0]
+            # 21 bars after 09:00 on a trading day = 11:05 given 5-min bars but since we
+            # built raw_df with hour-range filter, the actual bar indexing starts at 09:00.
+            # Pick a later bar to be safe: after 25 bars we're definitely stale.
+            later_idx = mon_idx + 25
+            self.assertTrue(pd.isna(merged.loc[later_idx, level_col]))
+            self.assertEqual(int(merged.loc[later_idx, avail_col]), 0)
+
+            # Derived factor values after window=4 observations exist. The 5th Monday
+            # (2024-01-29) gives pct_change(4) = 315/290 - 1 ≈ 0.0862.
+            ret_col = next(c for c in derived if c.endswith("_RET_4"))
+            mon5_idx = merged.index[merged["TDATE"] == pd.Timestamp("2024-01-29 09:00:00")][0]
+            self.assertAlmostEqual(float(merged.loc[mon5_idx, ret_col]), 315.0 / 290.0 - 1.0, places=4)
 
     def test_train_dual_regime_models_skips_model_persistence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

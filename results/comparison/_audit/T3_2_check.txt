@@ -1,0 +1,24 @@
+=== T3.2 Acceptance Script ===
+Date: 2026-04-22T07:12:02Z
+
+Check 1: config.yaml has mid_weekly section with required keys
+PASS
+config mid_weekly: {'available_dummy': True, 'ffill_max_bars': 8064, 'derived': {'enabled': True, 'rolling_windows': [4, 13, 52], 'transforms': ['ret', 'zscore', 'pct_rank']}, 'level_keep': True, 'missing_ratio_relax': 0.65}
+
+Check 2: Strategy B knobs threaded into FactorDatasetBuilder settings
+PASS
+{'mid_weekly_available_dummy': True, 'mid_weekly_ffill_max_bars': 8064, 'mid_weekly_derived_enabled': True, 'mid_weekly_derived_windows': [4, 13, 52], 'mid_weekly_derived_transforms': ['ret', 'zscore', 'pct_rank'], 'mid_weekly_level_keep': True, 'mid_weekly_missing_ratio_relax': 0.65}
+
+Check 3: T3.2 unit test passes (via unittest discover pattern)
+test_mid_weekly_strategy_b_available_clamp_and_derived (test_dataset_and_modeling.DatasetAndModelingTest.test_mid_weekly_strategy_b_available_clamp_and_derived)
+Ran 7 tests in 1.523s
+OK
+
+Check 4: full test suite green
+.s.........
+----------------------------------------------------------------------
+Ran 17 tests in 1.462s
+
+OK (skipped=1)
+
+=== T3.2 ACCEPTANCE PASSED ===

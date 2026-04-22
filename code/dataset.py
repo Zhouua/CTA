@@ -139,6 +139,8 @@ def build_data_settings(
     factors_cfg = get_section(config, "factors", {})
     runtime_cfg = normalize_runtime_factor_config(get_section(factors_cfg, "runtime", {}))
     product_cfg = get_section(config, "product", {})
+    mid_weekly_cfg = get_section(config, "mid_weekly", {})
+    derived_cfg = get_section(mid_weekly_cfg, "derived", {}) if isinstance(mid_weekly_cfg, dict) else {}
     product_id = str(product_cfg.get("product_id", "")).upper()
     raw_data_path = _resolve_raw_data_path(config_dir, paths_cfg, product_cfg)
     merged_cache, cache_meta = _resolve_cache_paths(
@@ -198,6 +200,13 @@ def build_data_settings(
         "test_ratio": float(data_cfg.get("test_ratio", 0.15)),
         "use_mid_weekly": bool(data_cfg.get("use_mid_weekly", True)),
         "mid_alignment": str(data_cfg.get("mid_alignment", "asof_forward_fill")).lower(),
+        "mid_weekly_available_dummy": bool(mid_weekly_cfg.get("available_dummy", True)) if isinstance(mid_weekly_cfg, dict) else True,
+        "mid_weekly_ffill_max_bars": int(mid_weekly_cfg.get("ffill_max_bars", 8064)) if isinstance(mid_weekly_cfg, dict) else 8064,
+        "mid_weekly_derived_enabled": bool(derived_cfg.get("enabled", True)) if isinstance(derived_cfg, dict) else True,
+        "mid_weekly_derived_windows": [int(w) for w in (derived_cfg.get("rolling_windows", [4, 13, 52]) if isinstance(derived_cfg, dict) else [4, 13, 52])],
+        "mid_weekly_derived_transforms": [str(t).lower() for t in (derived_cfg.get("transforms", ["ret", "zscore", "pct_rank"]) if isinstance(derived_cfg, dict) else ["ret", "zscore", "pct_rank"])],
+        "mid_weekly_level_keep": bool(mid_weekly_cfg.get("level_keep", True)) if isinstance(mid_weekly_cfg, dict) else True,
+        "mid_weekly_missing_ratio_relax": float(mid_weekly_cfg.get("missing_ratio_relax", 0.65)) if isinstance(mid_weekly_cfg, dict) else 0.65,
         "vol_window": int(vol_cfg.get("window", 20)),
         "vol_percentage": float(vol_cfg.get("vol_percentage", 0.7)),
         "label_train_only": bool(vol_cfg.get("label_train_only", False)),
@@ -487,6 +496,58 @@ class FactorDatasetBuilder:
             return self._read_mid_weekly_csv(factor_path, seen)
         raise ValueError(f"Unsupported mid-weekly file type: {factor_path}")
 
+    def _compute_mid_weekly_derivatives(
+        self, factor_df: pd.DataFrame, level_cols: list[str]
+    ) -> tuple[pd.DataFrame | None, list[str]]:
+        """Per-file derivative engineering on the sparse weekly observation frame.
+
+        Returns (derived_df, derived_cols) where derived_df is indexed by a
+        subset of the sparse observation timestamps (intersection with whichever
+        col had enough non-null observations). Windows are counted in
+        *observations* (≈ weeks given the weekly source). ``ret`` is pct_change
+        clipped to [-1, 5]; ``zscore`` divides by rolling std (0 → NaN);
+        ``pct_rank`` uses rolling.rank(pct=True).
+        """
+        if not self.settings["mid_weekly_derived_enabled"] or not level_cols:
+            return None, []
+        windows = self.settings["mid_weekly_derived_windows"]
+        transforms = self.settings["mid_weekly_derived_transforms"]
+        if not windows or not transforms:
+            return None, []
+        ts_col = self.timestamp_col
+        pieces: list[pd.DataFrame] = []
+        derived_cols: list[str] = []
+        for col in level_cols:
+            s = factor_df.sort_values(ts_col).set_index(ts_col)[col].dropna()
+            min_required = max(2, min(windows))
+            if len(s) < min_required:
+                continue
+            per_col = pd.DataFrame(index=s.index)
+            for w in windows:
+                if "ret" in transforms:
+                    name = f"{col}_RET_{w}"
+                    per_col[name] = s.pct_change(w).clip(-1.0, 5.0)
+                    derived_cols.append(name)
+                if "zscore" in transforms:
+                    name = f"{col}_ZSCORE_{w}"
+                    mp = max(1, w // 2)
+                    mean = s.rolling(w, min_periods=mp).mean()
+                    std = s.rolling(w, min_periods=mp).std().replace(0, np.nan)
+                    per_col[name] = (s - mean) / std
+                    derived_cols.append(name)
+                if "pct_rank" in transforms:
+                    name = f"{col}_PCT_RANK_{w}"
+                    mp = max(1, w // 2)
+                    per_col[name] = s.rolling(w, min_periods=mp).rank(pct=True)
+                    derived_cols.append(name)
+            pieces.append(per_col)
+        if not pieces:
+            return None, []
+        derived = pd.concat(pieces, axis=1).sort_index()
+        derived.index.name = ts_col
+        derived = derived.astype("float32")
+        return derived.reset_index(), derived_cols
+
     def _merge_mid_weekly_features(self, raw_df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
         if not self.settings["use_mid_weekly"]:
             return raw_df, []
@@ -499,29 +560,91 @@ class FactorDatasetBuilder:
             raise ValueError("Only data.mid_alignment='asof_forward_fill' is supported.")
 
         merged = raw_df.sort_values(self.timestamp_col).reset_index(drop=True).copy()
-        mid_cols: list[str] = []
+        level_cols_all: list[str] = []
+        derived_cols_all: list[str] = []
+        available_cols_all: list[str] = []
         seen: set[str] = set()
         all_meta: dict[str, dict[str, str]] = {}
-        for file_name in files:
+
+        available_dummy = bool(self.settings["mid_weekly_available_dummy"])
+        ffill_max_bars = int(self.settings["mid_weekly_ffill_max_bars"])
+        level_keep = bool(self.settings["mid_weekly_level_keep"])
+
+        for file_idx, file_name in enumerate(files):
             factor_path = Path(file_name)
             if not factor_path.is_absolute():
                 factor_path = mid_weekly_dir / factor_path
             if not factor_path.exists():
                 raise FileNotFoundError(f"Missing mid-weekly file for product {self.settings['product_id']}: {factor_path}")
             factor_df, meta = self._read_mid_weekly_factor(factor_path, seen)
-            new_cols = [col for col in factor_df.columns if col != self.timestamp_col]
+            file_level_cols = [col for col in factor_df.columns if col != self.timestamp_col]
+
+            derived_df, derived_cols_file = self._compute_mid_weekly_derivatives(factor_df, file_level_cols)
+
+            # Per-file arrival timestamp helper column; used for ffill clamp staleness.
+            arrival_col = f"__mid_arrival_ts_{file_idx}__"
+            full_factor_df = factor_df.copy()
+            full_factor_df[arrival_col] = full_factor_df[self.timestamp_col]
+            if derived_df is not None and len(derived_df):
+                full_factor_df = full_factor_df.merge(derived_df, on=self.timestamp_col, how="left")
+            full_factor_df = full_factor_df.sort_values(self.timestamp_col)
+
             merged = pd.merge_asof(
                 merged,
-                factor_df.sort_values(self.timestamp_col),
+                full_factor_df,
                 on=self.timestamp_col,
                 direction="backward",
             )
-            mid_cols.extend(new_cols)
+
+            # Forward-fill levels (and derivatives) across the 5-min grid between sparse
+            # observations. merge_asof(backward) already performs this between adjacent
+            # observation timestamps; an explicit ffill is a no-op here but stays as
+            # documented behavior in case upstream data has unexpected gaps.
+            carry_cols = file_level_cols + derived_cols_file
+            if carry_cols:
+                merged[carry_cols] = merged[carry_cols].ffill()
+
+            # Staleness clamp: set values to NaN once the number of 5-min bars since the
+            # last arrival exceeds ffill_max_bars.
+            if ffill_max_bars > 0 and arrival_col in merged.columns:
+                arrival = merged[arrival_col]
+                group_key = arrival.fillna(pd.Timestamp("1970-01-01"))
+                changed = group_key.ne(group_key.shift())
+                if not changed.empty:
+                    changed.iloc[0] = True
+                group = changed.cumsum()
+                staleness = merged.groupby(group).cumcount()
+                stale_mask = (staleness > ffill_max_bars) & arrival.notna()
+                if stale_mask.any():
+                    merged.loc[stale_mask, file_level_cols] = np.nan
+                    if derived_cols_file:
+                        merged.loc[stale_mask, derived_cols_file] = np.nan
+
+            # AVAILABLE dummies reflect the post-clamp notna status on each level column.
+            if available_dummy:
+                for col in file_level_cols:
+                    a_col = f"{col}_AVAILABLE"
+                    merged[a_col] = merged[col].notna().astype("int8")
+                    available_cols_all.append(a_col)
+
+            # Drop arrival helper (one per file; we no longer need it after clamping).
+            merged = merged.drop(columns=[arrival_col], errors="ignore")
+
+            level_cols_all.extend(file_level_cols)
+            derived_cols_all.extend(derived_cols_file)
             all_meta.update(meta)
-        if mid_cols:
-            merged[mid_cols] = merged[mid_cols].ffill()
+
+        # Final list of mid_weekly feature columns to expose downstream.
+        output_mid_cols: list[str] = []
+        if level_keep:
+            output_mid_cols.extend(level_cols_all)
+        else:
+            merged = merged.drop(columns=level_cols_all, errors="ignore")
+        output_mid_cols.extend(available_cols_all)
+        output_mid_cols.extend(derived_cols_all)
+
         self._mid_weekly_metadata = all_meta
-        return merged, mid_cols
+        return merged, output_mid_cols
 
     def _add_engineered_features(self, df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
         if not self.settings["use_engineered_features"]:
@@ -802,19 +925,36 @@ class FactorDatasetBuilder:
         candidate_cols = [col for col in candidate_cols if col in merged_data.columns]
         merged_data[candidate_cols] = merged_data[candidate_cols].replace([np.inf, -np.inf], np.nan)
 
+        # Split candidates so the blanket ffill doesn't undo the mid_weekly
+        # staleness clamp — MID_* columns are already filled/clamped in
+        # _merge_mid_weekly_features.
+        mid_candidate_cols = [col for col in candidate_cols if col.startswith("MID_")]
+        non_mid_candidate_cols = [col for col in candidate_cols if not col.startswith("MID_")]
+
         fill_method = self.settings["fill_method"]
         if fill_method == "forward_fill":
-            merged_data[candidate_cols] = merged_data[candidate_cols].ffill()
+            if non_mid_candidate_cols:
+                merged_data[non_mid_candidate_cols] = merged_data[non_mid_candidate_cols].ffill()
         elif fill_method != "none":
             raise ValueError(f"Unsupported fill method: {fill_method}")
 
         train_mask = merged_data["DATA_SPLIT"] == "train"
         train_snapshot = merged_data.loc[train_mask, candidate_cols].copy()
 
-        usable_factor_cols = []
+        usable_factor_cols: list[str] = []
         if factor_cols:
-            factor_missing = train_snapshot[factor_cols].isna().mean()
-            usable_factor_cols = factor_missing[factor_missing <= self.settings["max_factor_missing_ratio"]].index.tolist()
+            mid_factor_cols = [col for col in factor_cols if col.startswith("MID_")]
+            non_mid_factor_cols = [col for col in factor_cols if not col.startswith("MID_")]
+            if non_mid_factor_cols:
+                missing = train_snapshot[non_mid_factor_cols].isna().mean()
+                usable_factor_cols.extend(
+                    missing[missing <= self.settings["max_factor_missing_ratio"]].index.tolist()
+                )
+            if mid_factor_cols:
+                mid_missing = train_snapshot[mid_factor_cols].isna().mean()
+                usable_factor_cols.extend(
+                    mid_missing[mid_missing <= self.settings["mid_weekly_missing_ratio_relax"]].index.tolist()
+                )
 
         usable_engineered_cols = [col for col in engineered_cols if col in candidate_cols]
         usable_extra_cols = [col for col in extra_feature_cols if col in candidate_cols]
@@ -827,6 +967,13 @@ class FactorDatasetBuilder:
         usable_feature_cols = std_series[std_series > self.settings["min_factor_std"]].index.tolist()
         if not usable_feature_cols:
             raise ValueError("All feature columns were removed by train-set variance filtering.")
+
+        # Fill NaN in MID_* columns with 0.0 so dropna(required_cols) doesn't
+        # kill rows for pre-arrival / stale-clamped windows. The companion
+        # MID_*_AVAILABLE dummy lets the model recognize imputed zeros.
+        mid_feature_cols = [col for col in usable_feature_cols if col.startswith("MID_")]
+        if mid_feature_cols:
+            merged_data[mid_feature_cols] = merged_data[mid_feature_cols].fillna(0.0)
 
         target_col = self.settings["target_col"]
         required_cols = usable_feature_cols + [target_col, "future_return", "REGIME_LABEL", "DATA_SPLIT"]
