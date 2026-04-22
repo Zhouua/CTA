@@ -1,0 +1,17 @@
+=== T2 Acceptance Script ===
+Date: 2026-04-22T06:25:10Z
+
+Check 1: audit markdown exists
+PASS
+
+Check 2: cleaned directory exists
+PASS
+
+Check 3: cleaned xlsx count == 25
+cleaned count: 25
+PASS
+
+Check 4: each cleaned xlsx has 4-row header
+OK
+
+=== T2 ACCEPTANCE PASSED ===
