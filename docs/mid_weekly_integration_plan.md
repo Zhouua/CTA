@@ -275,7 +275,13 @@ T3.3 实跑 ablation (在 T4.2 产出后)
 | T4.2 | 新 batch run | done | 2026-04-22T09:22:03Z | run_id `20260422_154414` · `results/runs/20260422_154414/run_summary.csv` (25 success / 9 failed / 31 skipped) · 训练日志 `results/comparison/_audit/t4_2_run_logs/train.log` · 验收 `results/comparison/_audit/T4_2_check.txt` | 所有 25 个成功品种 `mid_weekly_feature_count ∈ [39, 201]`（baseline=0）；ZN 首轮因瞬时 IO 空读失败，`--resume-run` 后成功；success 集合与 baseline 完全一致 |
 | T4.3 | A/B 对比报告 | done | 2026-04-23T06:02:00Z | `results/comparison/midweekly_vs_baseline.{csv,md,png}` · `scripts/compare_runs.py` | 中位数 ΔSharpe = +0.098 (>0)；但退步占比 36.0% > 33.3% → 强制进入 T3.3\* ablation；详见 §12 |
 | T3.3*-a | 全 feature_importance gain 口径（AVAILABLE/derived/level） | blocked | 2026-04-23T08:11:24Z | `scripts/audit_mid_weekly_importance.py` (+`--gain-breakdown`) · `results/comparison/midweekly_gain_breakdown.{json,md}` · 验收 `results/comparison/_audit/T3_3star_a_check.txt` | `--gain-breakdown` 已实现并跑通：50/50 (pid, regime) 对缺 `feature_importance_all`（batch run `persist_models=false`，modeling.py 只把 top-20 写进 training_summary.json）→ 触发 plan § 12.1 停下条件，升级至 § 9 **Q3**。9 个回归品种 AVAILABLE gain share 在 top-20 口径下恒为 0（top-20 列里没出现任何 AVAILABLE 列）——信息不充分，不能据此下结论 |
-| T3.3*-b | Ablation-A 新 batch：`available_dummy=false` | todo | – | – | 依赖 T3.3\*-a；必须 `--force-rebuild`（MID config 不触发 cache 失效） |
+| T14.0 | 诊断脚本骨架 `scripts/diagnose_midweekly_regression.py` | todo | – | – | 单一脚本包含 `--task 1..4`；无其它中间产物；见 § 14 |
+| T14.1 | top-20 组成对比（baseline vs candidate on 9 regressed） | todo | – | – | 依赖 T14.0；输出追加到 `docs/midweekly_regression_diagnosis.md` · 验收 `_audit/T14_1_check.txt` |
+| T14.2 | val vs test 指标分化 | todo | – | – | 依赖 T14.0；`OVERFIT` / `SIGNAL_NOISE` / `UNCHANGED` 分类 |
+| T14.3 | 9 回归品种 MID 输入审计 | todo | – | – | 起始日期 / 非空比 / 时间重叠 / 阶梯 dummy 标注 |
+| T14.4 | MID 类占比对比（9 回归 vs 改善组） | todo | – | – | top-20 口径下 level/derived/available/other 分布 |
+| T14.5 | 根因结论 + 消融路径决策 | todo | – | – | 写入 `docs/midweekly_regression_diagnosis.md § 14.5`，回填 § 12 的消融方向 |
+| T3.3*-b | Ablation-A 新 batch：`available_dummy=false` | todo | – | – | 依赖 T14.5 的路径决策（若决策指向 AVAILABLE）；必须 `--force-rebuild`（MID config 不触发 cache 失效） |
 | T3.3*-c | Ablation-A 双向对比 | todo | – | – | 依赖 T3.3\*-b；输出 `results/comparison/ablation_noavail_vs_{baseline,candidate}.{csv,md,png}` |
 | T3.3*-d | 裁决 `available_dummy` 去留 + §9 Q2 回填 | todo | – | – | 依赖 T3.3\*-c；按 §6 规则：gain<5% & Δval_sharpe<0.1 → 关；否则留 |
 | T3.3*-e | （条件）Ablation-B：`derived.enabled=false` | conditional | – | – | 仅当 T3.3\*-d 后 `ablation_noavail_vs_baseline` 仍 ≥1/3 品种回归时触发 |
@@ -604,3 +610,107 @@ done
 2. **ablation run 必须独立 run_id**：禁止 `--resume-run` 复用已有 run_id（会污染 manifest）。
 3. **`--force-rebuild` 在任何 MID config 改动后都是强制项**，违者视为实验无效。
 4. **磁盘安全闸**：任何 batch 启动前，working tree 必须干净 + 磁盘 ≥5 GiB。
+
+---
+
+## 14. 根因诊断：为什么 9 个品种加 MID 反而退化（T3.3\* 的前置）
+
+### 14.0 定位
+
+用户目标是**找出 FB / FU / Y / B / SN / RU / BB / JD / M 这 9 个品种在加 mid_weekly 后 ΔSharpe < 0 的原因**，而不是只学会"关哪个开关能恢复 Sharpe"。诊断先行：消融只能回答 what，本节回答 why。完成后再决定 T3.3\*-b 走哪条路径。
+
+T3.3\*-a 因 § 9 Q3 已阻塞；§14 的诊断**完全基于现有 run 产物**，不新起 batch，不触发 Q3。
+
+### 14.0.1 最小污染原则（本节不变量）
+
+- **只新增一个脚本** `scripts/diagnose_midweekly_regression.py`，带 `--task {1|2|3|4|5}` 子命令。
+- **产出只有两类**：
+  1. 追加写入 `docs/midweekly_regression_diagnosis.md`（单文件，按任务分节追加）。
+  2. `results/comparison/_audit/T14_{1..5}_check.txt` 验收日志。
+- **禁止**另开 JSON/CSV/PNG 中间产物；禁止往 `pipeline/` 里加任何东西。
+- 修复 / 改 ablation 配置的动作全部留给后续 T3.3\*-b，本节只诊断不执行。
+
+### 14.1 T14.1 — top-20 组成对比（baseline vs candidate）
+
+**目标**：看 MID_* 把 baseline 原来的什么列挤掉了。如果挤掉的是时间/趋势骨干（`ENG_TOD_*`、`MA*`、`MAX*` 等），因果链清晰。
+
+**步骤**：
+1. `python scripts/diagnose_midweekly_regression.py --task 1`
+2. 对 9 个品种 × 2 regime：
+   - 读 `results/runs/20260416_170652/<PID>/training_summary.json::regimes.<r>.metrics.top_features`（baseline）
+   - 读 `results/runs/20260422_154414/<PID>/training_summary.json::regimes.<r>.metrics.top_features`（candidate）
+   - 输出：(a) 候选里上榜的 MID_* 按类 (level/derived/available/other) 分桶及占比；(b) baseline 里 top-20 在候选里落榜的列表（按 baseline gain 降序）；(c) 保留列的 gain 秩变化中位数。
+3. 结果追加到 `docs/midweekly_regression_diagnosis.md § 14.1`。
+
+**验收**（`results/comparison/_audit/T14_1_check.txt`）：
+```bash
+test -f docs/midweekly_regression_diagnosis.md
+grep -q "^## 14.1" docs/midweekly_regression_diagnosis.md
+grep -c "^| " docs/midweekly_regression_diagnosis.md
+```
+文档里 § 14.1 至少包含 9 品种 × 2 regime = 18 行核心条目。
+
+**停下条件**：
+- baseline 对应品种的 `training_summary.json` 缺失 → 停下问用户（可能是 baseline run 清理过）。
+
+### 14.2 T14.2 — val vs test 指标分化
+
+**目标**：定位是"过拟合（val 好、test 坏）"还是"信号污染（val 也坏）"。
+
+**步骤**：
+1. `python scripts/diagnose_midweekly_regression.py --task 2`
+2. 对 9 个品种 × 2 regime，读 `regimes.<r>.metrics.{val,test}_metrics.{rmse, directional_accuracy, pearson_ic, spearman_ic}` 的 baseline/candidate 差。
+3. 每个 (pid, regime) 打 tag：
+   - `OVERFIT`：Δval ≥ 0（或温和负），Δtest 显著负（|Δtest_ic| > 2× |Δval_ic|）。
+   - `SIGNAL_NOISE`：val 和 test 同向恶化。
+   - `UNCHANGED`：两者均 |Δ| 小。
+4. 结果追加到 § 14.2。
+
+**验收**：`_audit/T14_2_check.txt` 打印每个 (pid, regime) 的 tag + 三类计数。
+
+**停下条件**：`val_metrics` 或 `test_metrics` 字段在 >50% 条目缺失 → 停。
+
+### 14.3 T14.3 — MID 输入审计（9 个回归品种）
+
+**目标**：看是不是数据本身有问题——例如"指标 2018 年才有数据"让 `AVAILABLE` 事实上变成阶梯 dummy。
+
+**步骤**：
+1. `python scripts/diagnose_midweekly_regression.py --task 3`
+2. 对 9 个品种：
+   - 打开 `data/mid_weekly/_cleaned/<PID>.xlsx`，按 `pipeline/dataset.py::_read_mid_weekly_xlsx` 的同样规则解析。
+   - 读 `data/product_registry.json` 里该品种的 raw 文件，取首行时间。
+   - 对每个指标列：`start_date`、`end_date`、`non_null_ratio`、`first_value_date - futures_start`（覆盖延迟）。
+   - 标记"阶梯 dummy 嫌疑"：若列在 `first_value_date` 之后非空比 ≥ 0.9 且之前全空，则 `AVAILABLE` 变量约等于 `I{t ≥ first_value_date}`。
+3. 追加 § 14.3。
+
+**验收**：`_audit/T14_3_check.txt` 列出每个品种"覆盖延迟 > 1 年的指标数"和"阶梯 dummy 列数"。
+
+**停下条件**：xlsx 打不开、或某品种 registry 里 raw 文件缺失 → 停。
+
+### 14.4 T14.4 — MID 类占比对比（回归组 vs 改善组）
+
+**目标**：统计层面回答"是不是 derived 派生列对周频目标确实不合适？"
+
+**步骤**：
+1. `python scripts/diagnose_midweekly_regression.py --task 4`
+2. 两组定义：**回归组** = 9 个；**改善组** = `results/comparison/midweekly_vs_baseline.csv` 里 `delta_sharpe > 0.3` 的品种。
+3. 在候选 run 的 top-20 口径下，每组统计每 (pid, regime) 的 `{level, derived, available, other}` 列数；报中位数 / p25 / p75。
+4. 追加 § 14.4 + 判断短语："derived 在回归组显著更多" / "无显著差异"。
+
+**验收**：`_audit/T14_4_check.txt`。
+
+**停下条件**：`midweekly_vs_baseline.csv` 缺失 → 停（理论上已在 T4.3 产出）。
+
+### 14.5 T14.5 — 结论与路径决策
+
+**步骤**：
+1. `python scripts/diagnose_midweekly_regression.py --task 5`（只负责把前 4 节的关键数字汇总到 § 14.5 提纲；最终结论文本由本会话手写补齐）。
+2. 根据 § 14.1–14.4 的证据，**在 § 14.5 给出一句话根因** 和**具体下一步**（三选一）：
+   - **R-A**：主要是 AVAILABLE 阶梯 dummy 的锅 → 走 T3.3\*-b（关 AVAILABLE）。
+   - **R-D**：主要是 derived 列在周频/5min 错配的锅 → 跳过 T3.3\*-b，直接走 T3.3\*-e（关 derived）。
+   - **R-P**：个别品种 MID 数据自身问题（覆盖不全 / 语义不匹配）→ 触发 § 9 **Q5**（per-product MID 黑名单）。
+3. 更新 § 8 对应 T3.3\*-b/-e 行的备注，指明 T14.5 的路径决策。
+
+**验收**：`_audit/T14_5_check.txt` 包含 "ROUTE=R-A|R-D|R-P" 一行。
+
+**停下条件**：若 § 14.1–14.4 证据相互冲突（例如 R-A 和 R-D 都强），停下问用户。
