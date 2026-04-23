@@ -274,7 +274,7 @@ T3.3 实跑 ablation (在 T4.2 产出后)
 | T4.1 | registry 更新 | done | 2026-04-22T07:40:04Z | `scripts/update_registry_with_mid_weekly.py` · `data/product_registry.json` 25 条被赋值 · `config.yaml` `paths.mid_weekly_dir` 指向 `_cleaned/` · 验收 `results/comparison/_audit/T4_1_check.txt` | 25 个 xlsx 品种全部映射为 `[<PID>.xlsx]`；脚本幂等；17/17 单测通过 |
 | T4.2 | 新 batch run | done | 2026-04-22T09:22:03Z | run_id `20260422_154414` · `results/runs/20260422_154414/run_summary.csv` (25 success / 9 failed / 31 skipped) · 训练日志 `results/comparison/_audit/t4_2_run_logs/train.log` · 验收 `results/comparison/_audit/T4_2_check.txt` | 所有 25 个成功品种 `mid_weekly_feature_count ∈ [39, 201]`（baseline=0）；ZN 首轮因瞬时 IO 空读失败，`--resume-run` 后成功；success 集合与 baseline 完全一致 |
 | T4.3 | A/B 对比报告 | done | 2026-04-23T06:02:00Z | `results/comparison/midweekly_vs_baseline.{csv,md,png}` · `scripts/compare_runs.py` | 中位数 ΔSharpe = +0.098 (>0)；但退步占比 36.0% > 33.3% → 强制进入 T3.3\* ablation；详见 §12 |
-| T3.3*-a | 全 feature_importance gain 口径（AVAILABLE/derived/level） | todo | – | – | 扩展 `scripts/audit_mid_weekly_importance.py`：读 `results/runs/20260422_154414/*/training_summary.json` 聚合 gain，不限 top-20 |
+| T3.3*-a | 全 feature_importance gain 口径（AVAILABLE/derived/level） | blocked | 2026-04-23T08:11:24Z | `scripts/audit_mid_weekly_importance.py` (+`--gain-breakdown`) · `results/comparison/midweekly_gain_breakdown.{json,md}` · 验收 `results/comparison/_audit/T3_3star_a_check.txt` | `--gain-breakdown` 已实现并跑通：50/50 (pid, regime) 对缺 `feature_importance_all`（batch run `persist_models=false`，modeling.py 只把 top-20 写进 training_summary.json）→ 触发 plan § 12.1 停下条件，升级至 § 9 **Q3**。9 个回归品种 AVAILABLE gain share 在 top-20 口径下恒为 0（top-20 列里没出现任何 AVAILABLE 列）——信息不充分，不能据此下结论 |
 | T3.3*-b | Ablation-A 新 batch：`available_dummy=false` | todo | – | – | 依赖 T3.3\*-a；必须 `--force-rebuild`（MID config 不触发 cache 失效） |
 | T3.3*-c | Ablation-A 双向对比 | todo | – | – | 依赖 T3.3\*-b；输出 `results/comparison/ablation_noavail_vs_{baseline,candidate}.{csv,md,png}` |
 | T3.3*-d | 裁决 `available_dummy` 去留 + §9 Q2 回填 | todo | – | – | 依赖 T3.3\*-c；按 §6 规则：gain<5% & Δval_sharpe<0.1 → 关；否则留 |
@@ -292,7 +292,8 @@ T3.3 实跑 ablation (在 T4.2 产出后)
 | 序号 | 触发任务 | 事项 | 状态 |
 |---|---|---|---|
 | Q1 | T2 | xlsx 软重复列裁决：7 对 B 选项已执行——为每对删一列，保留另一列。执行机制：`scripts/apply_soft_dup_decisions.py`（可重入，按 indicator_id 匹配）。当前 `data/mid_weekly/_cleaned/*.xlsx` 已应用。 | **decided (B)** 2026-04-22 |
-| Q2 | T3.3* | 哑变量是否保留（依赖 ablation 结果） | 待 T4.2 完成 |
+| Q2 | T3.3* | 哑变量是否保留（依赖 ablation 结果） | 待 T3.3*-d |
+| Q3 | T3.3*-a | 是否允许扩展 `pipeline/modeling.py` 把 full `feature_importance_all` 落到每品种 `training_summary.json`（batch run 无 `models/<regime>/feature_importance.json`，当前只有 top-20）。两种路线：**A** 改 modeling.py 的 `metrics` dict（受 §10.1 不变量约束，但此处目的是**记录**全 gain，不动回测/损失逻辑，可视作合规扩展）+ 用 `--resume-run` **不合规**、须新 run_id 重跑完整 25 品种（§13 不变量 2）；**B** 维持 top-20 口径，承认 T3.3*-a 口径有偏，直接跑 ablation（T3.3*-b..-d）；**C** 让 `train_products.py` 临时设 `model.persist_models=true`、跑一次产出 `feature_importance.json`（磁盘代价 ≈ 25 × 2 × LGBM 大小）。建议 A 或 C，等用户定夺。 | **todo — 待用户定夺** |
 
 **Q1 软重复明细与裁决**（决定由用户确认，`scripts/apply_soft_dup_decisions.py` 为执行记录）：
 

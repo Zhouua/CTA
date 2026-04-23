@@ -37,6 +37,14 @@ MID_PREFIX = "MID_"
 GAIN_SHARE_THRESHOLD = 0.05  # ≥ 5% → keep; < 5% → candidate removal
 ABLATION_DELTA_THRESHOLD = 0.1  # |Δ val_sharpe| ≥ 0.1 → keep
 
+# T4.3 identified these as regression products vs baseline (ΔSharpe < -0.1).
+# Used by the --gain-breakdown summary section per plan § 12.1.
+REGRESSED_PRODUCTS: tuple[str, ...] = ("FB", "FU", "Y", "B", "SN", "RU", "BB", "JD", "M")
+
+# Derived-factor naming convention (see pipeline/dataset.py::_compute_mid_weekly_derivatives).
+# Any MID_* column whose suffix matches `_<TRANSFORM>_<WINDOW>` is counted as derived.
+_DERIVED_TRANSFORMS: tuple[str, ...] = ("RET", "ZSCORE", "PCT_RANK")
+
 
 @dataclass
 class RegimeImportance:
@@ -250,6 +258,251 @@ def _run_ablation(run_dir: Path, product_id: str, baseline_summary: dict[str, An
     }
 
 
+def _classify_mid_feature(name: str) -> str:
+    """Return 'available' | 'derived' | 'level' | 'other'."""
+    if not name.startswith(MID_PREFIX):
+        return "other"
+    if name.endswith(MID_AVAILABLE_SUFFIX):
+        return "available"
+    tokens = name.split("_")
+    # Derived suffix is `_<TRANSFORM>_<WINDOW>` where WINDOW is an int.
+    if len(tokens) >= 2 and tokens[-1].isdigit():
+        # PCT_RANK is two tokens; RET/ZSCORE are one token.
+        tail_two = "_".join(tokens[-3:-1]) if len(tokens) >= 3 else ""
+        tail_one = tokens[-2]
+        if tail_two == "PCT_RANK" or tail_one in _DERIVED_TRANSFORMS:
+            return "derived"
+    return "level"
+
+
+def _load_regime_importance_full(
+    product_dir: Path, regime: str
+) -> tuple[RegimeImportance | None, bool]:
+    """Return (importance, is_full).
+
+    ``is_full`` is True when we read a full-features payload (either
+    ``models/<regime>/feature_importance.json`` or
+    ``regimes.<regime>.metrics.feature_importance_all`` inside
+    ``training_summary.json``). False means we only have the top-N
+    fallback — the plan § 12.1 says this must trigger § 9 Q3.
+    """
+    pid = product_dir.name
+    fi_path = product_dir / "models" / regime / "feature_importance.json"
+    if fi_path.exists():
+        rows = json.loads(fi_path.read_text(encoding="utf-8"))
+        return (
+            RegimeImportance(
+                regime=regime,
+                product_id=pid,
+                source=str(fi_path),
+                total_rows=len(rows),
+                rows=rows,
+            ),
+            True,
+        )
+    ts_path = product_dir / "training_summary.json"
+    if ts_path.exists():
+        ts = json.loads(ts_path.read_text(encoding="utf-8"))
+        metrics = ts.get("regimes", {}).get(regime, {}).get("metrics", {}) or {}
+        full = metrics.get("feature_importance_all")
+        if full:
+            return (
+                RegimeImportance(
+                    regime=regime,
+                    product_id=pid,
+                    source=f"{ts_path} → regimes.{regime}.metrics.feature_importance_all",
+                    total_rows=len(full),
+                    rows=full,
+                ),
+                True,
+            )
+        top = metrics.get("top_features") or []
+        if top:
+            return (
+                RegimeImportance(
+                    regime=regime,
+                    product_id=pid,
+                    source=f"{ts_path} → regimes.{regime}.metrics.top_features",
+                    total_rows=len(top),
+                    rows=top,
+                ),
+                False,
+            )
+    return None, False
+
+
+def _gain_breakdown_regime(regime_imp: RegimeImportance, is_full: bool) -> dict[str, Any]:
+    gain_col = regime_imp.gain_col()
+    if not gain_col:
+        return {
+            "regime": regime_imp.regime,
+            "source": regime_imp.source,
+            "is_full_importance": is_full,
+            "error": "no gain column in feature-importance payload",
+        }
+    rows = regime_imp.rows
+    feature_key = "feature" if rows and "feature" in rows[0] else "name"
+    total = sum(float(r.get(gain_col) or 0.0) for r in rows)
+    buckets = {"level": 0.0, "derived": 0.0, "available": 0.0, "other": 0.0}
+    counts = {"level": 0, "derived": 0, "available": 0, "other": 0}
+    for r in rows:
+        name = str(r.get(feature_key, ""))
+        bucket = _classify_mid_feature(name)
+        gain = float(r.get(gain_col) or 0.0)
+        buckets[bucket] += gain
+        counts[bucket] += 1
+    denom = total if total > 0 else 1.0
+    return {
+        "regime": regime_imp.regime,
+        "source": regime_imp.source,
+        "is_full_importance": is_full,
+        "rows_available": regime_imp.total_rows,
+        "gain_total": total,
+        "level_gain": buckets["level"],
+        "derived_gain": buckets["derived"],
+        "available_gain": buckets["available"],
+        "other_gain": buckets["other"],
+        "level_gain_share": buckets["level"] / denom,
+        "derived_gain_share": buckets["derived"] / denom,
+        "available_gain_share": buckets["available"] / denom,
+        "other_gain_share": buckets["other"] / denom,
+        "feature_counts": counts,
+    }
+
+
+def _percentile(sorted_values: list[float], pct: float) -> float:
+    if not sorted_values:
+        return float("nan")
+    idx = min(len(sorted_values) - 1, max(0, int(round(pct * (len(sorted_values) - 1)))))
+    return sorted_values[idx]
+
+
+def _gain_breakdown(run_dir: Path) -> dict[str, Any]:
+    """Plan § 12.1 T3.3*-a: per (pid, regime) gain decomposition."""
+    product_dirs = sorted(
+        p
+        for p in run_dir.iterdir()
+        if p.is_dir() and not p.name.startswith(".") and not p.name.startswith("_")
+        and (p / "training_summary.json").exists()
+    )
+    per_product: dict[str, dict[str, Any]] = {}
+    missing_full: list[str] = []
+    for pdir in product_dirs:
+        for regime in ("low_vol", "high_vol"):
+            regime_imp, is_full = _load_regime_importance_full(pdir, regime)
+            if regime_imp is None:
+                continue
+            breakdown = _gain_breakdown_regime(regime_imp, is_full)
+            per_product.setdefault(pdir.name, {})[regime] = breakdown
+            if not is_full:
+                missing_full.append(f"{pdir.name}/{regime}")
+
+    # Regressed-product summary (per § 12.1 acceptance).
+    regressed_shares: list[float] = []
+    for pid in REGRESSED_PRODUCTS:
+        if pid not in per_product:
+            continue
+        for regime in ("low_vol", "high_vol"):
+            entry = per_product[pid].get(regime)
+            if not entry or "error" in entry:
+                continue
+            regressed_shares.append(entry["available_gain_share"])
+    regressed_shares_sorted = sorted(regressed_shares)
+
+    summary = {
+        "run_dir": str(run_dir),
+        "product_count": len(per_product),
+        "regime_count": sum(len(v) for v in per_product.values()),
+        "regressed_products": list(REGRESSED_PRODUCTS),
+        "regressed_available_gain_share": {
+            "count": len(regressed_shares_sorted),
+            "median": _percentile(regressed_shares_sorted, 0.5),
+            "p90": _percentile(regressed_shares_sorted, 0.9),
+            "max": max(regressed_shares_sorted) if regressed_shares_sorted else float("nan"),
+            "sorted": regressed_shares_sorted,
+        },
+        "all_regimes_use_full_importance": not missing_full,
+        "missing_full_importance_regimes": missing_full,
+        "blocking_stop_condition": (
+            "feature_importance_all absent — see plan §12.1 stop condition and §9 Q3"
+            if missing_full
+            else None
+        ),
+        "threshold_for_keep": GAIN_SHARE_THRESHOLD,
+    }
+    return {"summary": summary, "per_product": per_product}
+
+
+def _gain_breakdown_markdown(payload: dict[str, Any]) -> str:
+    lines: list[str] = []
+    summary = payload["summary"]
+    lines.append("# Mid-Weekly Feature-Importance Gain Breakdown")
+    lines.append("")
+    lines.append(f"Run: `{summary['run_dir']}`")
+    lines.append("")
+    lines.append("## 数据完整性 / Coverage")
+    lines.append("")
+    if summary["all_regimes_use_full_importance"]:
+        lines.append("- 所有 (product, regime) 都读到了完整 `feature_importance_all`。")
+    else:
+        lines.append(
+            "- **警告：部分 (product, regime) 仅有 top-N 回退**；"
+            "结果口径不等同于全特征 gain 份额。"
+        )
+        lines.append(
+            f"- 触发 plan § 12.1 停下条件 → **§ 9 Q3**："
+            "是否允许扩展 `pipeline/modeling.py` 把全特征 importance 落到 `training_summary.json`。"
+        )
+        missing = summary["missing_full_importance_regimes"]
+        lines.append(f"- 缺口 regime 数：{len(missing)}")
+        if missing:
+            lines.append(f"  示例：`{', '.join(missing[:8])}{'...' if len(missing) > 8 else ''}`")
+    lines.append("")
+    lines.append("## 回归品种（T4.3 ΔSharpe < 0）AVAILABLE gain share 分布")
+    lines.append("")
+    rg = summary["regressed_available_gain_share"]
+    lines.append(f"- 样本数 (pid, regime): {rg['count']}")
+    lines.append(f"- median: {rg['median']:.4f}")
+    lines.append(f"- p90: {rg['p90']:.4f}")
+    lines.append(f"- max: {rg['max']:.4f}")
+    lines.append(f"- threshold for keep: {summary['threshold_for_keep']:.2f}")
+    if rg["count"] and rg["median"] < summary["threshold_for_keep"]:
+        lines.append("- → 回归品种 AVAILABLE 中位数 gain share 低于 5%，倾向 drop（仍需 ablation 验证）。")
+    lines.append("")
+    lines.append("## 每品种 × regime 明细")
+    lines.append("")
+    lines.append(
+        "| Product | Regime | Full? | #Total | #MID-level | #MID-derived | #AVAILABLE | level share | derived share | AVAILABLE share | other share |"
+    )
+    lines.append("|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|")
+    per_product = payload["per_product"]
+    for pid in sorted(per_product):
+        for regime in ("low_vol", "high_vol"):
+            entry = per_product[pid].get(regime)
+            if not entry:
+                continue
+            if "error" in entry:
+                lines.append(
+                    f"| {pid} | {regime} | ? | - | - | - | - | ERR | ERR | ERR | ERR |"
+                )
+                continue
+            full_mark = "✓" if entry["is_full_importance"] else "top-N"
+            fc = entry["feature_counts"]
+            lines.append(
+                f"| {pid} | {regime} | {full_mark} | {entry['rows_available']} "
+                f"| {fc['level']} | {fc['derived']} | {fc['available']} "
+                f"| {entry['level_gain_share']:.3f} | {entry['derived_gain_share']:.3f} "
+                f"| {entry['available_gain_share']:.3f} | {entry['other_gain_share']:.3f} |"
+            )
+    lines.append("")
+    lines.append(
+        "> 口径说明：`share` = 该类列 gain 之和 / 该 regime 中所有特征 gain 之和。"
+        "只要 Full? 列出现 `top-N`，该行分母偏低（只覆盖前 20），share 会系统性偏高。"
+    )
+    lines.append("")
+    return "\n".join(lines)
+
+
 def _extract_val_sharpe(training_summary: dict[str, Any]) -> float | None:
     metrics = training_summary.get("combined_validation_metrics") or {}
     # Common sharpe-ish key names
@@ -275,12 +528,41 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output-json", default=None, help="Optional JSON dump of the audit payload")
     parser.add_argument("--ablation", action="store_true", help="Also run single-product ablation (requires --product)")
     parser.add_argument("--product", default=None, help="Product id to ablate on (required with --ablation)")
+    parser.add_argument(
+        "--gain-breakdown",
+        action="store_true",
+        help=(
+            "Plan § 12.1 T3.3*-a mode: emit per (product, regime) gain share "
+            "breakdown (level/derived/available/other) to fixed paths "
+            "results/comparison/midweekly_gain_breakdown.{json,md}. "
+            "Overrides --output-md / --output-json defaults."
+        ),
+    )
     args = parser.parse_args(argv)
 
     run_dir = Path(args.run_dir)
     if not run_dir.exists():
         print(f"ERROR: run-dir {run_dir} does not exist", file=sys.stderr)
         return 2
+
+    if args.gain_breakdown:
+        payload = _gain_breakdown(run_dir)
+        md = _gain_breakdown_markdown(payload)
+        out_json = Path("results/comparison/midweekly_gain_breakdown.json")
+        out_md = Path("results/comparison/midweekly_gain_breakdown.md")
+        out_json.parent.mkdir(parents=True, exist_ok=True)
+        out_json.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        out_md.write_text(md, encoding="utf-8")
+        print(f"Wrote {out_json}")
+        print(f"Wrote {out_md}")
+        if payload["summary"]["missing_full_importance_regimes"]:
+            print(
+                "[T3.3*-a] WARNING: feature_importance_all absent — plan § 12.1 "
+                "stop condition hit; escalate to § 9 Q3.",
+                file=sys.stderr,
+            )
+            return 3  # distinct exit code so callers can detect the blocking state
+        return 0
 
     report = _scan_run(run_dir)
 

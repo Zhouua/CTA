@@ -1,0 +1,20 @@
+### T3.3*-a acceptance (plan § 12.1)
+Run at: 2026-04-23T08:11:24Z
+
+-- [1] artifact existence --
+PASS: results/comparison/midweekly_gain_breakdown.json exists
+PASS: results/comparison/midweekly_gain_breakdown.md exists
+
+-- [2] plan-stipulated python check --
+avail_gain_share on regressed: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+median: 0.0
+p90   : 0.0
+max   : 0.0
+coverage check (len>=10): True (got 18)
+
+all_regimes_use_full_importance: False
+missing full importance: 50 (product,regime) pairs
+  sample: ['AG/low_vol', 'AG/high_vol', 'AU/low_vol', 'AU/high_vol', 'B/low_vol']
+BLOCKING: plan § 12.1 stop condition hit -> escalate § 9 Q3
+
+PASS: python check ran (but returned BLOCKING due to missing full-importance field)
