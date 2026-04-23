@@ -262,7 +262,7 @@ T3.3 实跑 ablation (在 T4.2 产出后)
 | T3.2 | 策略 B + 派生因子 | done | 2026-04-22T07:12:02Z | `config.yaml` 新增 `mid_weekly:` 节 · `code/dataset.py` (`_compute_mid_weekly_derivatives` / 扩展 `_merge_mid_weekly_features` / `prepare` 分流 MID_*) · `tests/test_dataset_and_modeling.py::test_mid_weekly_strategy_b_available_clamp_and_derived` · 验收 `results/comparison/_audit/T3_2_check.txt` | AVAILABLE 哑变量、`ffill_max_bars` 截断、RET/ZSCORE/PCT_RANK × [4,13,52] 派生因子、MID_* 单独 `missing_ratio_relax=0.65`、MID_* NaN→0 补齐以免 dropna 杀行；17/17 单测通过 |
 | T3.3 | 哑变量验证脚本 | done | 2026-04-22T07:27:23Z | `code/audit_mid_weekly_features.py` · 验收 `results/comparison/_audit/T3_3_check.txt` · 预览 `results/comparison/_audit/T3_3_preview.{md,json}` | 仅写脚本；骨架支持 full feature_importance.json 与 top_features fallback；`--ablation` 当前发射 skeleton 需后续在 T3.3* 接实际训练 |
 | T4.1 | registry 更新 | done | 2026-04-22T07:40:04Z | `code/update_registry_with_mid_weekly.py` · `data/product_registry.json` 25 条被赋值 · `config.yaml` `paths.mid_weekly_dir` 指向 `_cleaned/` · 验收 `results/comparison/_audit/T4_1_check.txt` | 25 个 xlsx 品种全部映射为 `[<PID>.xlsx]`；脚本幂等；17/17 单测通过 |
-| T4.2 | 新 batch run | todo | – | – | run_id 完成后回填 |
+| T4.2 | 新 batch run | done | 2026-04-22T09:22:03Z | run_id `20260422_154414` · `results/runs/20260422_154414/run_summary.csv` (25 success / 9 failed / 31 skipped) · 训练日志 `results/comparison/_audit/t4_2_run_logs/train.log` · 验收 `results/comparison/_audit/T4_2_check.txt` | 所有 25 个成功品种 `mid_weekly_feature_count ∈ [39, 201]`（baseline=0）；ZN 首轮因瞬时 IO 空读失败，`--resume-run` 后成功；success 集合与 baseline 完全一致 |
 | T4.3 | A/B 对比报告 | todo | – | – | – |
 | T3.3* | 实跑 ablation + 裁决 | todo | – | – | 依赖 T4.2 |
 
@@ -300,3 +300,144 @@ T3.3 实跑 ablation (在 T4.2 产出后)
 3. 所有改动落 git commit，message 前缀 `midweekly:`，方便 `git log --grep="^midweekly:"` 抽取整条线。
 4. 原 xlsx 文件保留不动；清洗结果只写到 `data/mid_weekly/_cleaned/`。
 5. 旧 run `results/runs/20260416_170652/` 保留为 baseline，不允许覆写。
+
+---
+
+## 11. 实际实现说明（中观因子端到端流程）
+
+> 本节把 T3.1 / T3.2 落地的代码行为固化为文档，便于后续 Claude 会话或他人检视，不作为可执行步骤。
+
+### 11.0 术语：`MID feat` 是什么
+
+`run_summary.csv` 里的 `mid_weekly_feature_count` 字段等于该品种特征矩阵中以 `MID_` 开头的列数——**不是"原始中观指标条数"**。每个原始中观指标 `X` 最多贡献 11 列，按下表展开：
+
+| 列类型 | 命名模板 | 数量 / 指标 |
+|---|---|---:|
+| 水平列（原始值） | `MID_<PID>_<ind_id>` | 1 |
+| 派生列 | `..._RET_{4,13,52}` · `..._ZSCORE_{4,13,52}` · `..._PCT_RANK_{4,13,52}` | 9（3 变换 × 3 窗口）|
+| 哑变量 | `..._AVAILABLE` | 1 |
+
+所以 `mid_weekly_feature_count = 11 × n_原始指标`（若 `derived.enabled=true` 且 `available_dummy=true`）。`20260422_154414` run 里 `FB=39 (≈4 指标)`、`FU=87 (≈8 指标)`、`JD=201 (≈18 指标)` 的差异源头就在这里。
+
+### 11.1 数据来源与前置处理
+
+- 源文件：`data/mid_weekly/_cleaned/<PID>.xlsx`，25 个品种各一个。
+- xlsx 形态：**宽表 + 4 行表头**（行 0 单位 / 行 1 指标名 / 行 2 频率 / 行 3 指标 ID），行 4+ 为数据。
+- 前置清洗：T2 `audit_mid_weekly.py` 去硬重复；§9 Q1 裁决经 `apply_soft_dup_decisions.py` 去软重复。
+- **原始 xlsx 保留不动**（§10 不变量 4），清洗结果只落在 `_cleaned/`；`config.yaml` 的 `paths.mid_weekly_dir` 指向 `_cleaned/` 目录。
+
+### 11.2 核心代码位置
+
+所有逻辑集中在 `code/dataset.py::_merge_mid_weekly_features`（§10 不变量 1：不碰 `backtest.py` / `modeling.py`）。按文件循环、每品种独立处理：
+
+```
+code/dataset.py
+├── _read_mid_weekly_xlsx        L411–450   读 xlsx → 稀疏观测表
+├── _read_mid_weekly_csv         L452–486   兜底 CSV 路径（legacy）
+├── _read_mid_weekly_factor      L488–497   根据扩展名分发
+├── _compute_mid_weekly_derivatives  L499–549  稀疏网格上的派生因子
+├── _merge_mid_weekly_features   L551–647   主流程（merge + clamp + dummy）
+└── _build_mid_column_name       L380–409   列命名与冲突消歧
+```
+
+### 11.3 步骤 1 — 读 xlsx → 稀疏观测表 (`_read_mid_weekly_xlsx`)
+
+- 跳过 4 行表头，从第 5 行起读；第 0 列强制 `to_datetime`，落为 `NaT` 的行丢弃。
+- 列命名规则（`_build_mid_column_name`）：
+  - 优先 `MID_<PID>_<indicator_id>`（指标 ID 全局唯一）。
+  - 兜底 `MID_<PID>_<ASCII 化指标名>[_<6 位 md5>]`，尾部超 40 字符截断。
+  - 同名冲突加 `_2 / _3 / ...` 计数后缀。
+- 数值列强制 `float32`，节省内存。
+- 同时落一份 meta（指标名 / 频率 / 单位 / 源文件），后续写进 `cache_meta.json` 供 audit 引用。
+- 时间戳去重：同一 ts 保留最后一条观测。
+
+### 11.4 步骤 2 — 派生因子（在稀疏网格上算，`_compute_mid_weekly_derivatives`）
+
+**关键不变量：先在周频稀疏网格上算，再 merge 到 5min**——这样 rolling 窗口的单位是"观测数 ≈ 周数"，而不是"分钟数"。
+
+| 变换 | 公式 | min_periods |
+|---|---|---|
+| `_RET_w` | `pct_change(w).clip(-1.0, 5.0)` | — |
+| `_ZSCORE_w` | `(x - rolling_mean(w)) / rolling_std(w)`，`std=0 → NaN` | `max(1, w//2)` |
+| `_PCT_RANK_w` | `rolling(w).rank(pct=True)` | `max(1, w//2)` |
+
+窗口 `[4, 13, 52]` 对应 ~1 月 / ~1 季 / ~1 年。`ret` 的 clip 是防 "除以 0 或极小分母" 造成爆值。
+
+控制开关：`config.yaml::mid_weekly.derived.{enabled, rolling_windows, transforms}`。
+
+### 11.5 步骤 3 — 合并到 5min 网格
+
+```python
+merged = pd.merge_asof(5min_bars, factor_df,
+                       on=timestamp, direction="backward")
+merged[level_cols + derived_cols] = merged[level_cols + derived_cols].ffill()
+```
+
+- **`direction="backward"` 是 §10 不变量 2 的硬约束**：严禁 `bfill` 或任何 forward-looking。
+- `merge_asof(backward)` 在相邻观测之间已经给出"前值延续"的效果；显式 `ffill` 作为 defensive doc 保留。
+- `data.mid_alignment` 只支持 `asof_forward_fill`，其它值抛错（`_merge_mid_weekly_features` L559）。
+
+### 11.6 步骤 4 — Staleness clamp（"策略 B"的真正落点）
+
+防止一个周频指标断更后被无限 ffill——这是用户决策点 1（"缺失值策略 B"）的核心机制。
+
+```python
+# 每次新观测到达时 __mid_arrival_ts__ 发生变化
+# 同一 arrival 组内累加计数，超过 ffill_max_bars 强制回写 NaN
+stale_mask = (staleness > ffill_max_bars) & arrival.notna()
+merged.loc[stale_mask, level_cols + derived_cols] = np.nan
+```
+
+- `ffill_max_bars` 默认 `8064`（= 5 min × 48 × 7 × 4 ≈ 4 周）；超限后水平列 + 派生列一并置 NaN。
+- arrival 辅助列为每个文件一份 `__mid_arrival_ts_{file_idx}__`，clamp 完成后立即 drop，不落入特征矩阵。
+
+### 11.7 步骤 5 — `_AVAILABLE` 哑变量（§6 验证对象）
+
+```python
+MID_<X>_AVAILABLE = merged[MID_<X>].notna().astype("int8")
+```
+
+- **在 clamp 之后计算**：一旦某观测被 staleness clamp 置 NaN，其 AVAILABLE 也变 0。这是该哑变量"是否真的携带信息"的前提。
+- 控制开关：`config.yaml::mid_weekly.available_dummy`（默认 `true`）。
+- T3.3 `audit_mid_weekly_features.py` + T3.3\* ablation 专门验证它的 gain 占比是否 ≥ 5%；若否，关闭即可，不用回滚代码。
+
+### 11.8 步骤 6 — MID_* 前缀分流（`prepare`）
+
+- 全局 `data.max_factor_missing_ratio = 0.35`（默认），对 5min 频因子是合理门槛，但会把大量周频水平列误删。
+- MID_* 列单独走 `mid_weekly.missing_ratio_relax = 0.65`（`prepare` 里按前缀分流），让周频水平列能活下来。
+- MID_* 列在合并/filter 之后把剩余 NaN 补 0，避免 `dropna` 把整行杀掉——T3.2 验收里"以免 dropna 杀行"的落地动作。
+
+### 11.9 缓存与恢复
+
+- 特征矩阵 cache 落在 `results/cache/products/<PID>/<signature>.parquet`；签名包含 raw 文件 mtime/size、runtime factor spec、mid_weekly 文件列表等。
+- 配套 `cache_meta.json` 里含 `mid_weekly_cols` 与 `mid_weekly_metadata`（L832-833 加载时回填），保证从 cache 读回来时 audit 依然可用。
+- **改 MID 相关的 config（如 `available_dummy`、`derived.enabled`、`rolling_windows`）不会自动让 cache 失效**——需要显式 `--force-rebuild`，否则读到的是旧派生列。这是 T4.2 rerun 的必带 flag。
+
+### 11.10 配置节（当前 baseline）
+
+```yaml
+# config.yaml
+paths:
+  mid_weekly_dir: data/mid_weekly/_cleaned   # 指向已清洗目录
+
+data:
+  use_mid_weekly: true
+  mid_alignment: asof_forward_fill
+  max_factor_missing_ratio: 0.35             # 全局门槛，MID_* 另走 relax
+
+mid_weekly:
+  available_dummy: true                       # MID_*_AVAILABLE
+  ffill_max_bars: 8064                        # ≈ 4 周的 staleness clamp
+  derived:
+    enabled: true
+    rolling_windows: [4, 13, 52]              # 周
+    transforms: [ret, zscore, pct_rank]
+  level_keep: true                            # 保留原始水平列
+  missing_ratio_relax: 0.65                   # MID_* 专属门槛
+```
+
+### 11.11 Registry 绑定
+
+- `data/product_registry.json` 里每个品种的 `mid_weekly_files: ["<PID>.xlsx"]`（相对 `paths.mid_weekly_dir`）。
+- 写入由 `code/update_registry_with_mid_weekly.py` 幂等执行：扫 `_cleaned/*.xlsx`，匹配不到的品种保持空列表。
+- baseline run `20260416_170652` 因 `mid_weekly_files=[]` 而全员 `mid_weekly_feature_count=0`；这是 A/B 对照成立的前提。
