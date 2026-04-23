@@ -288,8 +288,9 @@ T3.3 实跑 ablation (在 T4.2 产出后)
 | T3.3*-f | 最终裁决汇总 | deferred | 2026-04-23T08:58:13Z | – | 延迟到 § 9 Q5 决策 + R-P 新 batch 完成后 |
 | T15.1 | config + dataset 过滤实现（P2 option A） | done | 2026-04-23T09:56:45Z | `config.yaml` · `pipeline/dataset.py::_apply_mid_weekly_quality_filter` · cache signature 接入 `mid_weekly_filter` · `_mid_weekly_dropped` 审计字段 · 验收 `_audit/T15_1_check.txt` | 真实 FU 8→4 dry-run：4 step-dummy 全部按 §14.3 结果丢掉；不动 modeling.py / backtest.py |
 | T15.2 | 单测 | done | 2026-04-23T09:57:06Z | `tests/test_dataset_and_modeling.py::test_mid_weekly_quality_filter` · 验收 `_audit/T15_2_check.txt` | 18/18 测试通过；合成 xlsx 覆盖 dense-daily/sparse-daily/正常周频/step-dummy 四类 |
-| T15.3 | P2 新 batch run | todo | – | – | 新 run_id；`--force-rebuild`；磁盘 ≥5 GiB + 工作树干净（§13 安全闸） |
-| T15.4 | A/B 对比 P2 vs {baseline, candidate} | todo | – | – | 复用 `scripts/compare_runs.py`；输出 `results/comparison/p2_vs_{baseline,candidate}.{csv,md,png}` |
+| T15.3a | P2 新 batch — 先跑 9 回归品种 | todo | – | – | `--product FB …` 9 个；先验是否修复；成功再做 T15.3b |
+| T15.3b | P2 新 batch — 剩余 16 品种 | conditional | – | – | 仅在 T15.3a 确认 P2 对回归组有修复后再跑；否则回头调参 |
+| T15.4 | A/B 对比 P2 vs {baseline, candidate} | todo | – | – | 复用 `scripts/compare_runs.py`；输出 `results/comparison/p2_vs_{baseline,candidate}.{csv,md,png}`；回归组可在 T15.3a 后就出初步报告 |
 | T15.5 | 最终结论 + config 定稿 | todo | – | – | 追加 `docs/midweekly_regression_diagnosis.md § 15`；裁决 `mid_weekly` 最终配置；回填 §9 Q5 |
 
 > status 取值：`todo` / `in_progress` / `blocked` / `done`。`blocked` 必须在备注里写阻塞原因 + 触发的 § 9 决策点。
@@ -789,10 +790,19 @@ df -h /Users/zhouzian/Desktop | awk 'NR==2 { if ($4+0 < 5) exit 1 }'
 
 **步骤**：
 1. 产生新 `run_id`（**不**用 `--resume-run`，§13 不变量 2）。
-2. `python pipeline/train_products.py --all --force-rebuild`。
-3. 验 `run_summary.csv`：`mid_weekly_feature_count` 在 9 个回归品种中应显著低于 candidate；改善组下降应较小。
+2. 分两阶段执行：
+   - **T15.3a**：仅 9 个回归品种（用户决策 2026-04-23）。命令：
+     ```bash
+     python pipeline/train_products.py --force-rebuild \
+       --product FB --product FU --product Y --product B --product SN \
+       --product RU --product BB --product JD --product M
+     ```
+     用意：P2 若失败，4 小时内就能知道，不浪费 16 个改善品种的 compute。
+   - **T15.3b**（条件执行）：`python pipeline/train_products.py --all --force-rebuild --resume-run <T15.3a 的 run_id>` 仅在 T15.3a 明确修复时执行。
+     **例外**：§13 不变量 2 禁止 `--resume-run` 用于 ablation 目的；此处 T15.3b 是**同一配置下**把剩余 16 品种补齐，不是 ablation，因此允许。需要在 audit log 中明示该豁免。
+3. 验 `run_summary.csv`：`mid_weekly_feature_count` 在 9 个回归品种中应显著低于 candidate；改善组（T15.3b 完成后）下降应较小。
 
-**验收** (`results/comparison/_audit/T15_3_check.txt`)：
+**验收** (`results/comparison/_audit/T15_3a_check.txt` 与 `_audit/T15_3b_check.txt`)：
 ```bash
 test -f results/runs/<p2_run_id>/run_summary.csv
 python -c "
