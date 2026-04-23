@@ -504,6 +504,128 @@ class DatasetAndModelingTest(unittest.TestCase):
             mocked_build_feature_frame.assert_called_once()
             self.assertIs(result, fallback_result)
 
+    def test_mid_weekly_quality_filter(self) -> None:
+        """§ 15 T15.2: frequency-aware MID column filter.
+
+        Synthesize a 4-indicator xlsx and verify:
+          (a) dense daily ind is kept;
+          (b) sparse daily ind (eff_ratio < 0.6) is dropped as 'sparse';
+          (c) normally-populated weekly ind is kept;
+          (d) daily step-dummy ind (first valid far from start, post ≥ 0.9)
+              is dropped as 'step_dummy'.
+        """
+        import openpyxl
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            raw_path = root / "RBZL.SHF.csv"
+            mid_dir = root / "mid_weekly"
+            mid_dir.mkdir()
+            merged_cache = root / "cache.parquet"
+            cache_meta = root / "cache_meta.json"
+            regime_plot = root / "regime_plot.png"
+
+            # Raw bars over 10 business weeks so the weekly indicator has
+            # enough observations for the filter to see real coverage.
+            raw_index = pd.date_range("2024-01-01 09:00:00", "2024-03-08 14:55:00", freq="5min")
+            raw_index = raw_index[(raw_index.hour >= 9) & (raw_index.hour < 15) & (raw_index.weekday < 5)]
+            raw_df = pd.DataFrame({
+                "TDATE": raw_index,
+                "OPEN": np.arange(len(raw_index), dtype=float) + 1.0,
+                "HIGH": np.arange(len(raw_index), dtype=float) + 2.0,
+                "LOW": np.arange(len(raw_index), dtype=float),
+                "CLOSE": np.arange(len(raw_index), dtype=float) + 1.5,
+                "VOLUME": 10,
+                "AMOUNT": 100,
+            })
+            raw_df.to_csv(raw_path, index=False)
+
+            # 50 business days from 2024-01-01 Mon; we emit xlsx rows in
+            # reverse-chronological order (matching the real layout).
+            bdays = pd.bdate_range("2024-01-01", periods=50)
+            # (a) dense daily: non-null on 48/50 rows → eff = 0.96
+            # (b) sparse daily: non-null on only 10/50 rows → eff = 0.20
+            # (c) weekly: 10 valid (one per week) / 50 rows → eff = 1.0
+            # (d) step-dummy: nulls until row 25, then filled 24/25 → post ≥ 0.96
+            col_vals: dict[str, list[float]] = {"a": [], "b": [], "c": [], "d": []}
+            for i, d in enumerate(bdays):
+                col_vals["a"].append(100.0 + i if i not in (2, 7) else np.nan)
+                col_vals["b"].append(200.0 + i if i % 5 == 0 else np.nan)
+                col_vals["c"].append(300.0 + i if d.weekday() == 0 else np.nan)
+                col_vals["d"].append(np.nan if i < 25 else 400.0 + i)
+
+            xlsx_path = mid_dir / "RB.xlsx"
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            # Header block (rows 1-4, cols 2..5 for 4 indicators).
+            for col, (label, name_zh, freq, ind_id) in enumerate(
+                [
+                    ("万吨", "密集日频", "日", "S000A"),
+                    ("%", "稀疏日频", "日", "S000B"),
+                    ("点", "正常周频", "周", "S000C"),
+                    ("元", "阶梯日频", "日", "S000D"),
+                ], start=2,
+            ):
+                ws.cell(row=1, column=col, value=label)
+                ws.cell(row=2, column=col, value=name_zh)
+                ws.cell(row=3, column=col, value=freq)
+                ws.cell(row=4, column=col, value=ind_id)
+            ws.cell(row=1, column=1, value="单位")
+            ws.cell(row=2, column=1, value="指标名称")
+            ws.cell(row=3, column=1, value="频率")
+            ws.cell(row=4, column=1, value="指标ID")
+
+            # Write data rows in reverse chronological order.
+            for row_offset, i in enumerate(range(len(bdays) - 1, -1, -1)):
+                excel_row = 5 + row_offset
+                ws.cell(row=excel_row, column=1, value=pd.Timestamp(bdays[i]))
+                for col_idx, key in enumerate(["a", "b", "c", "d"], start=2):
+                    v = col_vals[key][i]
+                    if not (isinstance(v, float) and np.isnan(v)):
+                        ws.cell(row=excel_row, column=col_idx, value=float(v))
+            wb.save(xlsx_path)
+
+            builder = FactorDatasetBuilder(
+                config_override={
+                    "paths": {
+                        "raw_data": str(raw_path),
+                        "merged_cache": str(merged_cache),
+                        "cache_meta": str(cache_meta),
+                        "regime_plot": str(regime_plot),
+                        "mid_weekly_dir": str(mid_dir),
+                    },
+                    "data": {"use_mid_weekly": True},
+                    "product": {"product_id": "RB", "mid_weekly_files": ["RB.xlsx"]},
+                    "mid_weekly": {
+                        "available_dummy": True,
+                        "ffill_max_bars": 8064,
+                        "derived": {"enabled": False},
+                        "min_active_ratio": 0.6,
+                        "drop_step_dummy": True,
+                        "freq_expected_ratio": {"日": 1.0, "周": 0.2},
+                    },
+                }
+            )
+            raw = builder._read_raw_data()
+            merged, mid_cols = builder._merge_mid_weekly_features(raw)
+
+            level_cols = [c for c in mid_cols if not c.endswith("_AVAILABLE")]
+            ids_kept = {builder._mid_weekly_metadata[c]["indicator_id"] for c in level_cols}
+            self.assertEqual(ids_kept, {"S000A", "S000C"},
+                             f"expected kept=dense-daily+weekly, got {ids_kept}; mid_cols={mid_cols}")
+
+            # Drop audit trail: 2 entries with the right reasons.
+            dropped = {d["indicator_id"]: d["reason"] for d in builder._mid_weekly_dropped}
+            self.assertIn("S000B", dropped)
+            self.assertTrue(dropped["S000B"].startswith("sparse"), dropped)
+            self.assertIn("S000D", dropped)
+            self.assertTrue(dropped["S000D"].startswith("step_dummy"), dropped)
+
+            # AVAILABLE dummies only emitted for surviving level columns.
+            avail_cols = [c for c in mid_cols if c.endswith("_AVAILABLE")]
+            self.assertEqual(len(avail_cols), 2,
+                             f"expected 2 AVAILABLE cols, got {avail_cols}")
+
 
 if __name__ == "__main__":
     unittest.main()

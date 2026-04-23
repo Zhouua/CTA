@@ -286,8 +286,8 @@ T3.3 实跑 ablation (在 T4.2 产出后)
 | T3.3*-d | 裁决 `available_dummy` 去留 + §9 Q2 回填 | superseded | 2026-04-23T08:58:13Z | – | 依赖 T3.3\*-c，同 superseded；§ 9 Q2 将在 R-P 路径完成后一并裁决 |
 | T3.3*-e | （条件）Ablation-B：`derived.enabled=false` | rejected | 2026-04-23T08:58:13Z | – | § 14.4 证据反向（改善组 derived 更多），否决 |
 | T3.3*-f | 最终裁决汇总 | deferred | 2026-04-23T08:58:13Z | – | 延迟到 § 9 Q5 决策 + R-P 新 batch 完成后 |
-| T15.1 | config + dataset 过滤实现（P2 option A） | todo | – | – | 新增 `mid_weekly.{min_active_ratio, drop_step_dummy}`；扩展 `pipeline/dataset.py::_merge_mid_weekly_features`；cache 签名加入新开关 |
-| T15.2 | 单测 | todo | – | – | `tests/test_dataset_and_modeling.py::test_mid_weekly_quality_filter`；覆盖"稀疏列 drop / step-dummy drop / 阈值边界" |
+| T15.1 | config + dataset 过滤实现（P2 option A） | done | 2026-04-23T09:56:45Z | `config.yaml` · `pipeline/dataset.py::_apply_mid_weekly_quality_filter` · cache signature 接入 `mid_weekly_filter` · `_mid_weekly_dropped` 审计字段 · 验收 `_audit/T15_1_check.txt` | 真实 FU 8→4 dry-run：4 step-dummy 全部按 §14.3 结果丢掉；不动 modeling.py / backtest.py |
+| T15.2 | 单测 | done | 2026-04-23T09:57:06Z | `tests/test_dataset_and_modeling.py::test_mid_weekly_quality_filter` · 验收 `_audit/T15_2_check.txt` | 18/18 测试通过；合成 xlsx 覆盖 dense-daily/sparse-daily/正常周频/step-dummy 四类 |
 | T15.3 | P2 新 batch run | todo | – | – | 新 run_id；`--force-rebuild`；磁盘 ≥5 GiB + 工作树干净（§13 安全闸） |
 | T15.4 | A/B 对比 P2 vs {baseline, candidate} | todo | – | – | 复用 `scripts/compare_runs.py`；输出 `results/comparison/p2_vs_{baseline,candidate}.{csv,md,png}` |
 | T15.5 | 最终结论 + config 定稿 | todo | – | – | 追加 `docs/midweekly_regression_diagnosis.md § 15`；裁决 `mid_weekly` 最终配置；回填 §9 Q5 |
