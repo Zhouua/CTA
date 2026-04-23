@@ -275,17 +275,17 @@ T3.3 实跑 ablation (在 T4.2 产出后)
 | T4.2 | 新 batch run | done | 2026-04-22T09:22:03Z | run_id `20260422_154414` · `results/runs/20260422_154414/run_summary.csv` (25 success / 9 failed / 31 skipped) · 训练日志 `results/comparison/_audit/t4_2_run_logs/train.log` · 验收 `results/comparison/_audit/T4_2_check.txt` | 所有 25 个成功品种 `mid_weekly_feature_count ∈ [39, 201]`（baseline=0）；ZN 首轮因瞬时 IO 空读失败，`--resume-run` 后成功；success 集合与 baseline 完全一致 |
 | T4.3 | A/B 对比报告 | done | 2026-04-23T06:02:00Z | `results/comparison/midweekly_vs_baseline.{csv,md,png}` · `scripts/compare_runs.py` | 中位数 ΔSharpe = +0.098 (>0)；但退步占比 36.0% > 33.3% → 强制进入 T3.3\* ablation；详见 §12 |
 | T3.3*-a | 全 feature_importance gain 口径（AVAILABLE/derived/level） | blocked | 2026-04-23T08:11:24Z | `scripts/audit_mid_weekly_importance.py` (+`--gain-breakdown`) · `results/comparison/midweekly_gain_breakdown.{json,md}` · 验收 `results/comparison/_audit/T3_3star_a_check.txt` | `--gain-breakdown` 已实现并跑通：50/50 (pid, regime) 对缺 `feature_importance_all`（batch run `persist_models=false`，modeling.py 只把 top-20 写进 training_summary.json）→ 触发 plan § 12.1 停下条件，升级至 § 9 **Q3**。9 个回归品种 AVAILABLE gain share 在 top-20 口径下恒为 0（top-20 列里没出现任何 AVAILABLE 列）——信息不充分，不能据此下结论 |
-| T14.0 | 诊断脚本骨架 `scripts/diagnose_midweekly_regression.py` | todo | – | – | 单一脚本包含 `--task 1..4`；无其它中间产物；见 § 14 |
-| T14.1 | top-20 组成对比（baseline vs candidate on 9 regressed） | todo | – | – | 依赖 T14.0；输出追加到 `docs/midweekly_regression_diagnosis.md` · 验收 `_audit/T14_1_check.txt` |
-| T14.2 | val vs test 指标分化 | todo | – | – | 依赖 T14.0；`OVERFIT` / `SIGNAL_NOISE` / `UNCHANGED` 分类 |
-| T14.3 | 9 回归品种 MID 输入审计 | todo | – | – | 起始日期 / 非空比 / 时间重叠 / 阶梯 dummy 标注 |
-| T14.4 | MID 类占比对比（9 回归 vs 改善组） | todo | – | – | top-20 口径下 level/derived/available/other 分布 |
-| T14.5 | 根因结论 + 消融路径决策 | todo | – | – | 写入 `docs/midweekly_regression_diagnosis.md § 14.5`，回填 § 12 的消融方向 |
-| T3.3*-b | Ablation-A 新 batch：`available_dummy=false` | todo | – | – | 依赖 T14.5 的路径决策（若决策指向 AVAILABLE）；必须 `--force-rebuild`（MID config 不触发 cache 失效） |
-| T3.3*-c | Ablation-A 双向对比 | todo | – | – | 依赖 T3.3\*-b；输出 `results/comparison/ablation_noavail_vs_{baseline,candidate}.{csv,md,png}` |
-| T3.3*-d | 裁决 `available_dummy` 去留 + §9 Q2 回填 | todo | – | – | 依赖 T3.3\*-c；按 §6 规则：gain<5% & Δval_sharpe<0.1 → 关；否则留 |
-| T3.3*-e | （条件）Ablation-B：`derived.enabled=false` | conditional | – | – | 仅当 T3.3\*-d 后 `ablation_noavail_vs_baseline` 仍 ≥1/3 品种回归时触发 |
-| T3.3*-f | 最终裁决汇总 | todo | – | – | `results/comparison/midweekly_verdict.md`：三 run 对比 + 每个回归品种归属 + 对 `config.yaml::mid_weekly` 的最终推荐 |
+| T14.0 | 诊断脚本骨架 `scripts/diagnose_midweekly_regression.py` | done | 2026-04-23T08:51:51Z | `scripts/diagnose_midweekly_regression.py` | 单一脚本 `--task 1..5`；无中间 JSON/CSV；只写 `docs/midweekly_regression_diagnosis.md` 与 `_audit/T14_*_check.txt` |
+| T14.1 | top-20 组成对比（baseline vs candidate on 9 regressed） | done | 2026-04-23T08:51:51Z | `docs/midweekly_regression_diagnosis.md § 14.1` · `_audit/T14_1_check.txt` | 18/18 (pid, regime) AVAILABLE 在 top-20 均为 0；FU/B 派生列主导（11/20），FB/BB/JD 派生列只 ≤3 却仍回归 |
+| T14.2 | val vs test 指标分化 | done | 2026-04-23T08:51:51Z | `§ 14.2` · `_audit/T14_2_check.txt` | 11/18 UNCHANGED，4 SIGNAL_NOISE，1 OVERFIT，2 N/A —— bar-level IC 基本稳住，与 Sharpe 大跌形成反差 |
+| T14.3 | 9 回归品种 MID 输入审计 | done | 2026-04-23T08:51:52Z | `§ 14.3` · `_audit/T14_3_check.txt` | 修正 xlsx 倒序 bug 后：FU 4 列 step-dummy；Y/B/JD/M 稀疏列 (<0.3 非空) 普遍过半 |
+| T14.4 | MID 类占比对比（9 回归 vs 改善组） | done | 2026-04-23T08:51:53Z | `§ 14.4` · `_audit/T14_4_check.txt` | 改善组 MID derived 中位数 = 4 > 回归组 2.5 → derived 不是元凶 |
+| T14.5 | 根因结论 + 消融路径决策 | done | 2026-04-23T08:58:13Z | `§ 14.5` · `_audit/T14_5_check.txt` | **ROUTE = R-P**；触发 § 9 Q5；T3.3\*-b/-c/-d/-e 全部降级/否决 |
+| T3.3*-b | Ablation-A 新 batch：`available_dummy=false` | superseded | 2026-04-23T08:58:13Z | – | 被 § 14.5 ROUTE=R-P 取代；保留条目但不执行（理由：§ 14.1 显示 AVAILABLE 在 top-20 均为 0，全局关掉预期收益极小） |
+| T3.3*-c | Ablation-A 双向对比 | superseded | 2026-04-23T08:58:13Z | – | 依赖 T3.3\*-b，同 superseded |
+| T3.3*-d | 裁决 `available_dummy` 去留 + §9 Q2 回填 | superseded | 2026-04-23T08:58:13Z | – | 依赖 T3.3\*-c，同 superseded；§ 9 Q2 将在 R-P 路径完成后一并裁决 |
+| T3.3*-e | （条件）Ablation-B：`derived.enabled=false` | rejected | 2026-04-23T08:58:13Z | – | § 14.4 证据反向（改善组 derived 更多），否决 |
+| T3.3*-f | 最终裁决汇总 | deferred | 2026-04-23T08:58:13Z | – | 延迟到 § 9 Q5 决策 + R-P 新 batch 完成后 |
 
 > status 取值：`todo` / `in_progress` / `blocked` / `done`。`blocked` 必须在备注里写阻塞原因 + 触发的 § 9 决策点。
 
@@ -299,7 +299,9 @@ T3.3 实跑 ablation (在 T4.2 产出后)
 |---|---|---|---|
 | Q1 | T2 | xlsx 软重复列裁决：7 对 B 选项已执行——为每对删一列，保留另一列。执行机制：`scripts/apply_soft_dup_decisions.py`（可重入，按 indicator_id 匹配）。当前 `data/mid_weekly/_cleaned/*.xlsx` 已应用。 | **decided (B)** 2026-04-22 |
 | Q2 | T3.3* | 哑变量是否保留（依赖 ablation 结果） | 待 T3.3*-d |
-| Q3 | T3.3*-a | 是否允许扩展 `pipeline/modeling.py` 把 full `feature_importance_all` 落到每品种 `training_summary.json`（batch run 无 `models/<regime>/feature_importance.json`，当前只有 top-20）。两种路线：**A** 改 modeling.py 的 `metrics` dict（受 §10.1 不变量约束，但此处目的是**记录**全 gain，不动回测/损失逻辑，可视作合规扩展）+ 用 `--resume-run` **不合规**、须新 run_id 重跑完整 25 品种（§13 不变量 2）；**B** 维持 top-20 口径，承认 T3.3*-a 口径有偏，直接跑 ablation（T3.3*-b..-d）；**C** 让 `train_products.py` 临时设 `model.persist_models=true`、跑一次产出 `feature_importance.json`（磁盘代价 ≈ 25 × 2 × LGBM 大小）。建议 A 或 C，等用户定夺。 | **todo — 待用户定夺** |
+| Q3 | T3.3*-a | 是否允许扩展 `pipeline/modeling.py` 把 full `feature_importance_all` 落到每品种 `training_summary.json`（batch run 无 `models/<regime>/feature_importance.json`，当前只有 top-20）。两种路线：**A** 改 modeling.py 的 `metrics` dict（受 §10.1 不变量约束，但此处目的是**记录**全 gain，不动回测/损失逻辑，可视作合规扩展）+ 用 `--resume-run` **不合规**、须新 run_id 重跑完整 25 品种（§13 不变量 2）；**B** 维持 top-20 口径，承认 T3.3*-a 口径有偏，直接跑 ablation（T3.3*-b..-d）；**C** 让 `train_products.py` 临时设 `model.persist_models=true`、跑一次产出 `feature_importance.json`（磁盘代价 ≈ 25 × 2 × LGBM 大小）。建议 A 或 C，等用户定夺。 | **paused** 2026-04-23 — § 14 诊断先行后 ROUTE=R-P，本问题暂不再阻塞；仅在 R-P 路径完成后仍有残余回归时再启用 |
+| Q4 | T3.3*-e | 是否关闭 `derived.enabled`（派生列全局 ablation） | **rejected** 2026-04-23 — § 14.4 反向证据：改善组 derived 中位数 > 回归组 |
+| Q5 | T14.5 | Per-product MID 过滤策略三选一：**P1** 对 9 个回归品种直接 `mid_weekly_files=[]`；**P2** 在 `config.yaml::mid_weekly` 加 `min_nonnull_ratio` / `drop_step_dummy` 全局阈值；**P3** per-pid 列级黑名单。建议 P2 → P1 收底；P3 仅在 P2 后仍有残余回归时再用。 | **todo — 待用户定夺** |
 
 **Q1 软重复明细与裁决**（决定由用户确认，`scripts/apply_soft_dup_decisions.py` 为执行记录）：
 
