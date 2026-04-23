@@ -12,12 +12,23 @@
 ```text
 CTA_vol/
 ├── config.yaml
-├── code/
+├── pipeline/
 │   ├── config_utils.py
 │   ├── dataset.py
 │   ├── modeling.py
 │   ├── train.py
-│   └── backtest.py
+│   ├── train_products.py
+│   ├── backtest.py
+│   ├── backtest_macro.py
+│   ├── factor_engine.py
+│   ├── judge_macro.py
+│   └── build_product_registry.py
+├── scripts/
+│   ├── audit_mid_weekly_inputs.py
+│   ├── audit_mid_weekly_importance.py
+│   ├── apply_soft_dup_decisions.py
+│   ├── update_registry_with_mid_weekly.py
+│   └── compare_runs.py
 ├── dataloader/
 │   ├── dataloader.py
 │   └── splitByVol.py
@@ -35,14 +46,16 @@ CTA_vol/
 
 - `config.yaml`
   - 集中配置数据路径、样本切分、波动率划分、LightGBM 超参数、信号规则和回测参数。
-- `code/dataset.py`
+- `pipeline/dataset.py`
   - 负责原始数据读取、因子融合、工程特征生成、训练目标构造、调用 `splitByVol` 划分 regime，并输出训练/验证/测试集。
 - `dataloader/splitByVol.py`
   - 负责基于训练集样本计算波动率 cutoff，并对全样本打高波/低波标签。
-- `code/modeling.py`
+- `pipeline/modeling.py`
   - 负责分别训练 `low_vol` 与 `high_vol` 两个 LightGBM 模型，保存模型与训练诊断图。
-- `code/backtest.py`
+- `pipeline/backtest.py`
   - 负责用验证集预测值生成交易阈值、在测试集上生成持仓路径、计算净值和回测图。
+- `scripts/`
+  - 一次性/辅助脚本：中观输入 audit、软重复裁决、registry 更新、A/B 对比、feature importance audit。均自足，不从 `pipeline/` 导入。
 
 ## 2. 数据输入约定
 
@@ -157,21 +170,21 @@ CTA_vol/
 在代码根目录下执行：
 
 ```bash
-python code/train.py
-python code/backtest.py
+python pipeline/train.py
+python pipeline/backtest.py
 ```
 
 如果你改了原始数据或因子，想强制重建融合缓存：
 
 ```bash
-python code/train.py --force-rebuild
-python code/backtest.py --force-rebuild
+python pipeline/train.py --force-rebuild
+python pipeline/backtest.py --force-rebuild
 ```
 
 如果你要跑全品种批量训练：
 
 ```bash
-python code/train_products.py --all
+python pipeline/train_products.py --all
 ```
 
 批量训练会在终端输出每个品种的开始、成功、失败状态，并把运行中间状态持续写到 `results/runs/<run_id>/`。常用文件包括：
@@ -186,7 +199,7 @@ python code/train_products.py --all
 如果上一次批量训练里有失败或中断，可以直接补跑缺失品种：
 
 ```bash
-python code/train_products.py --resume-run <run_id>
+python pipeline/train_products.py --resume-run <run_id>
 ```
 
 `--resume-run` 会保留上次已经 `success` 的品种，只重新训练未成功的品种。

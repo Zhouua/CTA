@@ -1,11 +1,11 @@
 # Mid-Weekly Audit
 
-> T2 产出。脚本：`code/audit_mid_weekly.py`。输入：`data/mid_weekly/*.xlsx`。
+> T2 产出。脚本：`scripts/audit_mid_weekly_inputs.py`。输入：`data/mid_weekly/*.xlsx`。
 > 清洗结果（仅移除硬重复）：`data/mid_weekly/_cleaned/*.xlsx`。原文件保留不动。
 
 ## 原则
 
-- 周频指标在分钟数据上必然有大段空，训练管道用 `merge_asof(backward) + ffill` 处理（见 `code/dataset.py::_merge_mid_weekly_features`）。
+- 周频指标在分钟数据上必然有大段空，训练管道用 `merge_asof(backward) + ffill` 处理（见 `pipeline/dataset.py::_merge_mid_weekly_features`）。
 - 指标自身周内断更：先 `ffill`，**禁止 `bfill`**（会未来泄漏）。
 - 起始时间晚于行情：交给 § 6 策略 B（哑变量 + ffill 上限）处理，audit 阶段不做干预。
 

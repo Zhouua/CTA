@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from code.train_products import (
+from pipeline.train_products import (
     annotate_products_for_batch_skip,
     execute_training_session,
     split_resume_products,

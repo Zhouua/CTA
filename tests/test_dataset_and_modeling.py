@@ -8,8 +8,8 @@ from unittest.mock import patch
 import numpy as np
 import pandas as pd
 
-from code.dataset import FactorDatasetBuilder, PreparedData
-from code.modeling import train_dual_regime_models
+from pipeline.dataset import FactorDatasetBuilder, PreparedData
+from pipeline.modeling import train_dual_regime_models
 
 
 class DatasetAndModelingTest(unittest.TestCase):
@@ -42,7 +42,7 @@ class DatasetAndModelingTest(unittest.TestCase):
                 }
             )
 
-            with patch("code.dataset.pd.read_csv", side_effect=[TimeoutError(60, "Operation timed out"), sample_df]) as mocked_read_csv:
+            with patch("pipeline.dataset.pd.read_csv", side_effect=[TimeoutError(60, "Operation timed out"), sample_df]) as mocked_read_csv:
                 raw = builder._read_raw_data()
 
             self.assertEqual(mocked_read_csv.call_count, 2)
@@ -497,7 +497,7 @@ class DatasetAndModelingTest(unittest.TestCase):
                 {"factor_count": 1},
             )
 
-            with patch("code.dataset.pd.read_parquet", side_effect=TimeoutError(60, "Operation timed out")):
+            with patch("pipeline.dataset.pd.read_parquet", side_effect=TimeoutError(60, "Operation timed out")):
                 with patch.object(builder, "build_feature_frame", return_value=fallback_result) as mocked_build_feature_frame:
                     result = builder.load_or_build_feature_frame(force_rebuild=False)
 

@@ -58,9 +58,9 @@
 |---|---|---|---|
 | T1 | 提取 baseline run 最优品种 | `docs/run_20260416_170652_top_performers.md` | 否（与 T2/T3 并行） |
 | T2 | 审计 xlsx + 更新 recommendations | `docs/mid_weekly_recommendations.md` 增量 + `docs/mid_weekly_audit.md` | 阻塞 T3.2 |
-| T3.1 | 改造 `dataset.py` 支持 xlsx 宽表 | `code/dataset.py` patch + 新增测试 | 阻塞 T4 |
-| T3.2 | 实现缺失值策略 B + 派生因子 | `code/dataset.py` 续 + `config.yaml` `mid_weekly` 节 | 阻塞 T4 |
-| T3.3 | 哑变量有效性验证机制 | `code/audit_mid_weekly_features.py` | 阻塞 T4 完成态 |
+| T3.1 | 改造 `dataset.py` 支持 xlsx 宽表 | `pipeline/dataset.py` patch + 新增测试 | 阻塞 T4 |
+| T3.2 | 实现缺失值策略 B + 派生因子 | `pipeline/dataset.py` 续 + `config.yaml` `mid_weekly` 节 | 阻塞 T4 |
+| T3.3 | 哑变量有效性验证机制 | `scripts/audit_mid_weekly_importance.py` | 阻塞 T4 完成态 |
 | T4.1 | 更新 `product_registry.json` | `data/product_registry.json` patch | 阻塞 T4.2 |
 | T4.2 | 跑新 batch | `results/runs/<new_run_id>/` | 阻塞 T4.3 |
 | T4.3 | A/B 对比报告 | `results/comparison/midweekly_vs_baseline.{md,csv,png}` | 末端 |
@@ -91,7 +91,7 @@ grep -c "^| " docs/run_20260416_170652_top_performers.md  # 至少 27 (1 表头 
 ### T2：Mid-Weekly Audit
 
 **步骤**：
-1. 写一次性脚本 `code/audit_mid_weekly.py`：
+1. 写一次性脚本 `scripts/audit_mid_weekly_inputs.py`：
    - 入参：`--mid-weekly-dir data/mid_weekly --output docs/mid_weekly_audit.md`
    - 对每个 xlsx：
      - 解析 4 行表头（行 0 单位 / 行 1 指标名 / 行 2 频率 / 行 3 指标 ID）→ 数据 DataFrame（行 4+，第 0 列为日期）。
@@ -128,7 +128,7 @@ print('OK')
 
 #### T3.1 xlsx 读取
 
-**改动文件**：`code/dataset.py`（仅扩展 `_read_mid_weekly_factor` / `_merge_mid_weekly_features`）
+**改动文件**：`pipeline/dataset.py`（仅扩展 `_read_mid_weekly_factor` / `_merge_mid_weekly_features`）
 
 - `_read_mid_weekly_factor` 接受 `.csv | .xlsx | .xls`：
   - xlsx 分支：读第 0 sheet，跳过 4 行表头，第 1 行作为指标名，频率/ID 元数据存进缓存 meta（用于 audit）。
@@ -154,7 +154,7 @@ mid_weekly:
   missing_ratio_relax: 0.65        # 仅对 MID_* 列把 max_factor_missing_ratio 放宽到 0.65
 ```
 
-**实现要点（在 `code/dataset.py`）**：
+**实现要点（在 `pipeline/dataset.py`）**：
 1. 在 `_merge_mid_weekly_features` 之后:
    - 对每个 `MID_*` 列生成 `MID_*_AVAILABLE`（`notna().astype("int8")`）。
    - 应用 `ffill_max_bars` 截断：用 `where(notna_count_within_window <= ffill_max_bars)`。
@@ -170,7 +170,7 @@ mid_weekly:
 
 **目标**：客观证明 `MID_*_AVAILABLE` 是否真有信息，否则下一轮就关掉。
 
-**新增脚本** `code/audit_mid_weekly_features.py`：
+**新增脚本** `scripts/audit_mid_weekly_importance.py`：
 - 读取一个 run 的 `results/models/<regime>/feature_importance.json`。
 - 输出三件事：
   1. 所有 `MID_*_AVAILABLE` 列在两个 regime 中的 gain 重要性排名（top % 与绝对位次）。
@@ -188,7 +188,7 @@ mid_weekly:
 
 #### T4.1 更新 registry
 
-- 写 `code/update_registry_with_mid_weekly.py`：
+- 写 `scripts/update_registry_with_mid_weekly.py`：
   - 扫 `data/mid_weekly/_cleaned/*.xlsx`。
   - 文件名 `<PID>.xlsx` → product_id `<PID>`。
   - 在 registry 里把对应条目的 `mid_weekly_files` 设成 `["<PID>.xlsx"]`（路径相对 `mid_weekly_dir`，但读取时走 `_cleaned/` 子目录——通过 `paths.mid_weekly_dir` 临时指向 `_cleaned/` 实现，避免 registry 写死 `_cleaned/` 前缀）。
@@ -198,7 +198,7 @@ mid_weekly:
 #### T4.2 跑新 batch
 
 ```bash
-python code/train_products.py --all --force-rebuild
+python pipeline/train_products.py --all --force-rebuild
 ```
 
 - 自动新 run_id（建议保留默认时间戳命名，不强行注入）。
@@ -208,7 +208,7 @@ python code/train_products.py --all --force-rebuild
 
 #### T4.3 A/B 对比
 
-写 `code/compare_runs.py`：
+写 `scripts/compare_runs.py`：
 - 入参：`--baseline 20260416_170652 --candidate <new_run_id> --output results/comparison/midweekly_vs_baseline`
 - 输出：
   - `.csv`：每个品种 baseline / candidate 的 Sharpe / AnnRet / MaxDD / Trades / Win-Rate / ΔSharpe。
@@ -257,11 +257,11 @@ T3.3 实跑 ablation (在 T4.2 产出后)
 | # | 任务 | status | 完成时间 | 产出路径 | 备注 |
 |---|---|---|---|---|---|
 | T1 | Baseline top performers | done | 2026-04-22T06:19:51Z | `docs/run_20260416_170652_top_performers.md` · 验收 `results/comparison/_audit/T1_check.txt` | 25 success 均 `mid_weekly_feature_count=0`，作为 baseline 身份确认 |
-| T2 | xlsx audit + recs 更新 | done | 2026-04-22T06:25:10Z | `code/audit_mid_weekly.py` · `docs/mid_weekly_audit.md` · `data/mid_weekly/_cleaned/*.xlsx` · `docs/mid_weekly_recommendations.md` 每品种追加 · 验收 `results/comparison/_audit/T2_check.txt` | 25/25 xlsx 无硬重复；7 个软重复对触发 § 9 Q1（等待用户裁决） |
-| T3.1 | xlsx 宽表读取 + 单测 | done | 2026-04-22T06:54:01Z | `code/dataset.py` (`_read_mid_weekly_xlsx` / `_read_mid_weekly_csv` / `_build_mid_column_name`) · `tests/test_dataset_and_modeling.py::test_mid_weekly_xlsx_wide_format` · 验收 `results/comparison/_audit/T3_1_check.txt` | 列命名 `MID_<PID>_<ind_id>`，指标 meta 同步落 `cache_meta.json`，16/16 单测通过 |
-| T3.2 | 策略 B + 派生因子 | done | 2026-04-22T07:12:02Z | `config.yaml` 新增 `mid_weekly:` 节 · `code/dataset.py` (`_compute_mid_weekly_derivatives` / 扩展 `_merge_mid_weekly_features` / `prepare` 分流 MID_*) · `tests/test_dataset_and_modeling.py::test_mid_weekly_strategy_b_available_clamp_and_derived` · 验收 `results/comparison/_audit/T3_2_check.txt` | AVAILABLE 哑变量、`ffill_max_bars` 截断、RET/ZSCORE/PCT_RANK × [4,13,52] 派生因子、MID_* 单独 `missing_ratio_relax=0.65`、MID_* NaN→0 补齐以免 dropna 杀行；17/17 单测通过 |
-| T3.3 | 哑变量验证脚本 | done | 2026-04-22T07:27:23Z | `code/audit_mid_weekly_features.py` · 验收 `results/comparison/_audit/T3_3_check.txt` · 预览 `results/comparison/_audit/T3_3_preview.{md,json}` | 仅写脚本；骨架支持 full feature_importance.json 与 top_features fallback；`--ablation` 当前发射 skeleton 需后续在 T3.3* 接实际训练 |
-| T4.1 | registry 更新 | done | 2026-04-22T07:40:04Z | `code/update_registry_with_mid_weekly.py` · `data/product_registry.json` 25 条被赋值 · `config.yaml` `paths.mid_weekly_dir` 指向 `_cleaned/` · 验收 `results/comparison/_audit/T4_1_check.txt` | 25 个 xlsx 品种全部映射为 `[<PID>.xlsx]`；脚本幂等；17/17 单测通过 |
+| T2 | xlsx audit + recs 更新 | done | 2026-04-22T06:25:10Z | `scripts/audit_mid_weekly_inputs.py` · `docs/mid_weekly_audit.md` · `data/mid_weekly/_cleaned/*.xlsx` · `docs/mid_weekly_recommendations.md` 每品种追加 · 验收 `results/comparison/_audit/T2_check.txt` | 25/25 xlsx 无硬重复；7 个软重复对触发 § 9 Q1（等待用户裁决） |
+| T3.1 | xlsx 宽表读取 + 单测 | done | 2026-04-22T06:54:01Z | `pipeline/dataset.py` (`_read_mid_weekly_xlsx` / `_read_mid_weekly_csv` / `_build_mid_column_name`) · `tests/test_dataset_and_modeling.py::test_mid_weekly_xlsx_wide_format` · 验收 `results/comparison/_audit/T3_1_check.txt` | 列命名 `MID_<PID>_<ind_id>`，指标 meta 同步落 `cache_meta.json`，16/16 单测通过 |
+| T3.2 | 策略 B + 派生因子 | done | 2026-04-22T07:12:02Z | `config.yaml` 新增 `mid_weekly:` 节 · `pipeline/dataset.py` (`_compute_mid_weekly_derivatives` / 扩展 `_merge_mid_weekly_features` / `prepare` 分流 MID_*) · `tests/test_dataset_and_modeling.py::test_mid_weekly_strategy_b_available_clamp_and_derived` · 验收 `results/comparison/_audit/T3_2_check.txt` | AVAILABLE 哑变量、`ffill_max_bars` 截断、RET/ZSCORE/PCT_RANK × [4,13,52] 派生因子、MID_* 单独 `missing_ratio_relax=0.65`、MID_* NaN→0 补齐以免 dropna 杀行；17/17 单测通过 |
+| T3.3 | 哑变量验证脚本 | done | 2026-04-22T07:27:23Z | `scripts/audit_mid_weekly_importance.py` · 验收 `results/comparison/_audit/T3_3_check.txt` · 预览 `results/comparison/_audit/T3_3_preview.{md,json}` | 仅写脚本；骨架支持 full feature_importance.json 与 top_features fallback；`--ablation` 当前发射 skeleton 需后续在 T3.3* 接实际训练 |
+| T4.1 | registry 更新 | done | 2026-04-22T07:40:04Z | `scripts/update_registry_with_mid_weekly.py` · `data/product_registry.json` 25 条被赋值 · `config.yaml` `paths.mid_weekly_dir` 指向 `_cleaned/` · 验收 `results/comparison/_audit/T4_1_check.txt` | 25 个 xlsx 品种全部映射为 `[<PID>.xlsx]`；脚本幂等；17/17 单测通过 |
 | T4.2 | 新 batch run | done | 2026-04-22T09:22:03Z | run_id `20260422_154414` · `results/runs/20260422_154414/run_summary.csv` (25 success / 9 failed / 31 skipped) · 训练日志 `results/comparison/_audit/t4_2_run_logs/train.log` · 验收 `results/comparison/_audit/T4_2_check.txt` | 所有 25 个成功品种 `mid_weekly_feature_count ∈ [39, 201]`（baseline=0）；ZN 首轮因瞬时 IO 空读失败，`--resume-run` 后成功；success 集合与 baseline 完全一致 |
 | T4.3 | A/B 对比报告 | todo | – | – | – |
 | T3.3* | 实跑 ablation + 裁决 | todo | – | – | 依赖 T4.2 |
@@ -276,10 +276,10 @@ T3.3 实跑 ablation (在 T4.2 产出后)
 
 | 序号 | 触发任务 | 事项 | 状态 |
 |---|---|---|---|
-| Q1 | T2 | xlsx 软重复列裁决：7 对 B 选项已执行——为每对删一列，保留另一列。执行机制：`code/apply_soft_dup_decisions.py`（可重入，按 indicator_id 匹配）。当前 `data/mid_weekly/_cleaned/*.xlsx` 已应用。 | **decided (B)** 2026-04-22 |
+| Q1 | T2 | xlsx 软重复列裁决：7 对 B 选项已执行——为每对删一列，保留另一列。执行机制：`scripts/apply_soft_dup_decisions.py`（可重入，按 indicator_id 匹配）。当前 `data/mid_weekly/_cleaned/*.xlsx` 已应用。 | **decided (B)** 2026-04-22 |
 | Q2 | T3.3* | 哑变量是否保留（依赖 ablation 结果） | 待 T4.2 完成 |
 
-**Q1 软重复明细与裁决**（决定由用户确认，`code/apply_soft_dup_decisions.py` 为执行记录）：
+**Q1 软重复明细与裁决**（决定由用户确认，`scripts/apply_soft_dup_decisions.py` 为执行记录）：
 
 | Product | 保留 (ID) | 删除 (ID) | \|corr\| | 理由 |
 |---|---|---|---:|---|
@@ -295,7 +295,7 @@ T3.3 实跑 ablation (在 T4.2 产出后)
 
 ## 10. 不变量（任何任务都不能违反）
 
-1. 不动 `code/backtest.py` 与 `code/modeling.py` 的回测/损失逻辑——本计划只允许扩展 `code/dataset.py` 与新增脚本。
+1. 不动 `pipeline/backtest.py` 与 `pipeline/modeling.py` 的回测/损失逻辑——本计划只允许扩展 `pipeline/dataset.py` 与新增脚本。
 2. mid_weekly 数据**只允许 backward `merge_asof` + ffill**，禁止 `bfill` 与任何 future-looking 操作。
 3. 所有改动落 git commit，message 前缀 `midweekly:`，方便 `git log --grep="^midweekly:"` 抽取整条线。
 4. 原 xlsx 文件保留不动；清洗结果只写到 `data/mid_weekly/_cleaned/`。
@@ -328,10 +328,10 @@ T3.3 实跑 ablation (在 T4.2 产出后)
 
 ### 11.2 核心代码位置
 
-所有逻辑集中在 `code/dataset.py::_merge_mid_weekly_features`（§10 不变量 1：不碰 `backtest.py` / `modeling.py`）。按文件循环、每品种独立处理：
+所有逻辑集中在 `pipeline/dataset.py::_merge_mid_weekly_features`（§10 不变量 1：不碰 `backtest.py` / `modeling.py`）。按文件循环、每品种独立处理：
 
 ```
-code/dataset.py
+pipeline/dataset.py
 ├── _read_mid_weekly_xlsx        L411–450   读 xlsx → 稀疏观测表
 ├── _read_mid_weekly_csv         L452–486   兜底 CSV 路径（legacy）
 ├── _read_mid_weekly_factor      L488–497   根据扩展名分发
@@ -439,5 +439,5 @@ mid_weekly:
 ### 11.11 Registry 绑定
 
 - `data/product_registry.json` 里每个品种的 `mid_weekly_files: ["<PID>.xlsx"]`（相对 `paths.mid_weekly_dir`）。
-- 写入由 `code/update_registry_with_mid_weekly.py` 幂等执行：扫 `_cleaned/*.xlsx`，匹配不到的品种保持空列表。
+- 写入由 `scripts/update_registry_with_mid_weekly.py` 幂等执行：扫 `_cleaned/*.xlsx`，匹配不到的品种保持空列表。
 - baseline run `20260416_170652` 因 `mid_weekly_files=[]` 而全员 `mid_weekly_feature_count=0`；这是 A/B 对照成立的前提。
