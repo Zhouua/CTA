@@ -1,0 +1,1201 @@
+{
+  "summary": {
+    "run_dir": "results/runs/20260422_154414",
+    "product_count": 25,
+    "regime_count": 50,
+    "regressed_products": [
+      "FB",
+      "FU",
+      "Y",
+      "B",
+      "SN",
+      "RU",
+      "BB",
+      "JD",
+      "M"
+    ],
+    "regressed_available_gain_share": {
+      "count": 18,
+      "median": 0.0,
+      "p90": 0.0,
+      "max": 0.0,
+      "sorted": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "all_regimes_use_full_importance": false,
+    "missing_full_importance_regimes": [
+      "AG/low_vol",
+      "AG/high_vol",
+      "AU/low_vol",
+      "AU/high_vol",
+      "B/low_vol",
+      "B/high_vol",
+      "BB/low_vol",
+      "BB/high_vol",
+      "BU/low_vol",
+      "BU/high_vol",
+      "C/low_vol",
+      "C/high_vol",
+      "CS/low_vol",
+      "CS/high_vol",
+      "CU/low_vol",
+      "CU/high_vol",
+      "EG/low_vol",
+      "EG/high_vol",
+      "FB/low_vol",
+      "FB/high_vol",
+      "FU/low_vol",
+      "FU/high_vol",
+      "JD/low_vol",
+      "JD/high_vol",
+      "JM/low_vol",
+      "JM/high_vol",
+      "M/low_vol",
+      "M/high_vol",
+      "PB/low_vol",
+      "PB/high_vol",
+      "PG/low_vol",
+      "PG/high_vol",
+      "RB/low_vol",
+      "RB/high_vol",
+      "RR/low_vol",
+      "RR/high_vol",
+      "RU/low_vol",
+      "RU/high_vol",
+      "SN/low_vol",
+      "SN/high_vol",
+      "SP/low_vol",
+      "SP/high_vol",
+      "V/low_vol",
+      "V/high_vol",
+      "WR/low_vol",
+      "WR/high_vol",
+      "Y/low_vol",
+      "Y/high_vol",
+      "ZN/low_vol",
+      "ZN/high_vol"
+    ],
+    "blocking_stop_condition": "feature_importance_all absent — see plan §12.1 stop condition and §9 Q3",
+    "threshold_for_keep": 0.05
+  },
+  "per_product": {
+    "AG": {
+      "low_vol": {
+        "regime": "low_vol",
+        "source": "results/runs/20260422_154414/AG/training_summary.json → regimes.low_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 969666.5149130821,
+        "level_gain": 0.0,
+        "derived_gain": 84437.31579399109,
+        "available_gain": 0.0,
+        "other_gain": 885229.199119091,
+        "level_gain_share": 0.0,
+        "derived_gain_share": 0.08707871674991251,
+        "available_gain_share": 0.0,
+        "other_gain_share": 0.9129212832500875,
+        "feature_counts": {
+          "level": 0,
+          "derived": 4,
+          "available": 0,
+          "other": 16
+        }
+      },
+      "high_vol": {
+        "regime": "high_vol",
+        "source": "results/runs/20260422_154414/AG/training_summary.json → regimes.high_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 572564.0544929504,
+        "level_gain": 0.0,
+        "derived_gain": 28343.227378845215,
+        "available_gain": 0.0,
+        "other_gain": 544220.8271141052,
+        "level_gain_share": 0.0,
+        "derived_gain_share": 0.049502282157662385,
+        "available_gain_share": 0.0,
+        "other_gain_share": 0.9504977178423376,
+        "feature_counts": {
+          "level": 0,
+          "derived": 5,
+          "available": 0,
+          "other": 15
+        }
+      }
+    },
+    "AU": {
+      "low_vol": {
+        "regime": "low_vol",
+        "source": "results/runs/20260422_154414/AU/training_summary.json → regimes.low_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 2141176.930331707,
+        "level_gain": 25661.947792053223,
+        "derived_gain": 178012.9852924347,
+        "available_gain": 0.0,
+        "other_gain": 1937501.997247219,
+        "level_gain_share": 0.01198497304380994,
+        "derived_gain_share": 0.08313791484053458,
+        "available_gain_share": 0.0,
+        "other_gain_share": 0.9048771121156555,
+        "feature_counts": {
+          "level": 1,
+          "derived": 4,
+          "available": 0,
+          "other": 15
+        }
+      },
+      "high_vol": {
+        "regime": "high_vol",
+        "source": "results/runs/20260422_154414/AU/training_summary.json → regimes.high_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 672267.1113967896,
+        "level_gain": 0.0,
+        "derived_gain": 12650.262966156006,
+        "available_gain": 0.0,
+        "other_gain": 659616.8484306335,
+        "level_gain_share": 0.0,
+        "derived_gain_share": 0.018817316438211853,
+        "available_gain_share": 0.0,
+        "other_gain_share": 0.9811826835617882,
+        "feature_counts": {
+          "level": 0,
+          "derived": 2,
+          "available": 0,
+          "other": 18
+        }
+      }
+    },
+    "B": {
+      "low_vol": {
+        "regime": "low_vol",
+        "source": "results/runs/20260422_154414/B/training_summary.json → regimes.low_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 170392.47265291214,
+        "level_gain": 0.0,
+        "derived_gain": 22329.796488285065,
+        "available_gain": 0.0,
+        "other_gain": 148062.67616462708,
+        "level_gain_share": 0.0,
+        "derived_gain_share": 0.13104919566353526,
+        "available_gain_share": 0.0,
+        "other_gain_share": 0.8689508043364648,
+        "feature_counts": {
+          "level": 0,
+          "derived": 6,
+          "available": 0,
+          "other": 14
+        }
+      },
+      "high_vol": {
+        "regime": "high_vol",
+        "source": "results/runs/20260422_154414/B/training_summary.json → regimes.high_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 46293.321663856506,
+        "level_gain": 0.0,
+        "derived_gain": 5728.5886878967285,
+        "available_gain": 0.0,
+        "other_gain": 40564.73297595978,
+        "level_gain_share": 0.0,
+        "derived_gain_share": 0.12374546655979803,
+        "available_gain_share": 0.0,
+        "other_gain_share": 0.876254533440202,
+        "feature_counts": {
+          "level": 0,
+          "derived": 5,
+          "available": 0,
+          "other": 15
+        }
+      }
+    },
+    "BB": {
+      "low_vol": {
+        "regime": "low_vol",
+        "source": "results/runs/20260422_154414/BB/training_summary.json → regimes.low_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 3441216658604032.0,
+        "level_gain": 0.0,
+        "derived_gain": 0.0,
+        "available_gain": 0.0,
+        "other_gain": 3441216658604032.0,
+        "level_gain_share": 0.0,
+        "derived_gain_share": 0.0,
+        "available_gain_share": 0.0,
+        "other_gain_share": 1.0,
+        "feature_counts": {
+          "level": 0,
+          "derived": 0,
+          "available": 0,
+          "other": 20
+        }
+      },
+      "high_vol": {
+        "regime": "high_vol",
+        "source": "results/runs/20260422_154414/BB/training_summary.json → regimes.high_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 918123639270800.0,
+        "level_gain": 37410919415808.0,
+        "derived_gain": 58854562244608.0,
+        "available_gain": 0.0,
+        "other_gain": 821858157610384.0,
+        "level_gain_share": 0.04074714756884031,
+        "derived_gain_share": 0.06410308996221029,
+        "available_gain_share": 0.0,
+        "other_gain_share": 0.8951497624689494,
+        "feature_counts": {
+          "level": 1,
+          "derived": 3,
+          "available": 0,
+          "other": 16
+        }
+      }
+    },
+    "BU": {
+      "low_vol": {
+        "regime": "low_vol",
+        "source": "results/runs/20260422_154414/BU/training_summary.json → regimes.low_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 267720.8731970787,
+        "level_gain": 4807.243279457092,
+        "derived_gain": 25486.81060409546,
+        "available_gain": 0.0,
+        "other_gain": 237426.81931352615,
+        "level_gain_share": 0.017956176603078355,
+        "derived_gain_share": 0.0951991912312856,
+        "available_gain_share": 0.0,
+        "other_gain_share": 0.886844632165636,
+        "feature_counts": {
+          "level": 1,
+          "derived": 4,
+          "available": 0,
+          "other": 15
+        }
+      },
+      "high_vol": {
+        "regime": "high_vol",
+        "source": "results/runs/20260422_154414/BU/training_summary.json → regimes.high_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 81688.75920581818,
+        "level_gain": 871.8938140869141,
+        "derived_gain": 8959.045106887817,
+        "available_gain": 0.0,
+        "other_gain": 71857.82028484344,
+        "level_gain_share": 0.010673363416992807,
+        "derived_gain_share": 0.10967292432873336,
+        "available_gain_share": 0.0,
+        "other_gain_share": 0.8796537122542738,
+        "feature_counts": {
+          "level": 1,
+          "derived": 5,
+          "available": 0,
+          "other": 14
+        }
+      }
+    },
+    "C": {
+      "low_vol": {
+        "regime": "low_vol",
+        "source": "results/runs/20260422_154414/C/training_summary.json → regimes.low_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 162561.67573714256,
+        "level_gain": 0.0,
+        "derived_gain": 20368.37734079361,
+        "available_gain": 0.0,
+        "other_gain": 142193.29839634895,
+        "level_gain_share": 0.0,
+        "derived_gain_share": 0.1252963052234321,
+        "available_gain_share": 0.0,
+        "other_gain_share": 0.874703694776568,
+        "feature_counts": {
+          "level": 0,
+          "derived": 5,
+          "available": 0,
+          "other": 15
+        }
+      },
+      "high_vol": {
+        "regime": "high_vol",
+        "source": "results/runs/20260422_154414/C/training_summary.json → regimes.high_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 73425.80933189392,
+        "level_gain": 0.0,
+        "derived_gain": 3523.5466735363007,
+        "available_gain": 0.0,
+        "other_gain": 69902.26265835762,
+        "level_gain_share": 0.0,
+        "derived_gain_share": 0.047987849307992304,
+        "available_gain_share": 0.0,
+        "other_gain_share": 0.9520121506920077,
+        "feature_counts": {
+          "level": 0,
+          "derived": 2,
+          "available": 0,
+          "other": 18
+        }
+      }
+    },
+    "CS": {
+      "low_vol": {
+        "regime": "low_vol",
+        "source": "results/runs/20260422_154414/CS/training_summary.json → regimes.low_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 137686.65405535698,
+        "level_gain": 0.0,
+        "derived_gain": 5685.413884162903,
+        "available_gain": 0.0,
+        "other_gain": 132001.24017119408,
+        "level_gain_share": 0.0,
+        "derived_gain_share": 0.04129241082347081,
+        "available_gain_share": 0.0,
+        "other_gain_share": 0.9587075891765292,
+        "feature_counts": {
+          "level": 0,
+          "derived": 1,
+          "available": 0,
+          "other": 19
+        }
+      },
+      "high_vol": {
+        "regime": "high_vol",
+        "source": "results/runs/20260422_154414/CS/training_summary.json → regimes.high_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 62797.968020915985,
+        "level_gain": 0.0,
+        "derived_gain": 3032.99409198761,
+        "available_gain": 0.0,
+        "other_gain": 59764.973928928375,
+        "level_gain_share": 0.0,
+        "derived_gain_share": 0.04829764700312305,
+        "available_gain_share": 0.0,
+        "other_gain_share": 0.951702352996877,
+        "feature_counts": {
+          "level": 0,
+          "derived": 2,
+          "available": 0,
+          "other": 18
+        }
+      }
+    },
+    "CU": {
+      "low_vol": {
+        "regime": "low_vol",
+        "source": "results/runs/20260422_154414/CU/training_summary.json → regimes.low_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 1042009.0849442482,
+        "level_gain": 0.0,
+        "derived_gain": 42658.438217163086,
+        "available_gain": 0.0,
+        "other_gain": 999350.6467270851,
+        "level_gain_share": 0.0,
+        "derived_gain_share": 0.04093864327434869,
+        "available_gain_share": 0.0,
+        "other_gain_share": 0.9590613567256513,
+        "feature_counts": {
+          "level": 0,
+          "derived": 2,
+          "available": 0,
+          "other": 18
+        }
+      },
+      "high_vol": {
+        "regime": "high_vol",
+        "source": "results/runs/20260422_154414/CU/training_summary.json → regimes.high_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 282543.5535206795,
+        "level_gain": 6818.1819133758545,
+        "derived_gain": 7572.911653518677,
+        "available_gain": 0.0,
+        "other_gain": 268152.45995378494,
+        "level_gain_share": 0.024131436829532296,
+        "derived_gain_share": 0.026802634705889377,
+        "available_gain_share": 0.0,
+        "other_gain_share": 0.9490659284645784,
+        "feature_counts": {
+          "level": 1,
+          "derived": 2,
+          "available": 0,
+          "other": 17
+        }
+      }
+    },
+    "EG": {
+      "low_vol": {
+        "regime": "low_vol",
+        "source": "results/runs/20260422_154414/EG/training_summary.json → regimes.low_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 121258.463783741,
+        "level_gain": 0.0,
+        "derived_gain": 13752.436043262482,
+        "available_gain": 0.0,
+        "other_gain": 107506.02774047852,
+        "level_gain_share": 0.0,
+        "derived_gain_share": 0.11341423612119424,
+        "available_gain_share": 0.0,
+        "other_gain_share": 0.8865857638788057,
+        "feature_counts": {
+          "level": 0,
+          "derived": 4,
+          "available": 0,
+          "other": 16
+        }
+      },
+      "high_vol": {
+        "regime": "high_vol",
+        "source": "results/runs/20260422_154414/EG/training_summary.json → regimes.high_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 49162.86816740036,
+        "level_gain": 4997.730514526367,
+        "derived_gain": 409.8945026397705,
+        "available_gain": 0.0,
+        "other_gain": 43755.24315023422,
+        "level_gain_share": 0.10165660997460552,
+        "derived_gain_share": 0.008337481475736385,
+        "available_gain_share": 0.0,
+        "other_gain_share": 0.8900059085496581,
+        "feature_counts": {
+          "level": 1,
+          "derived": 1,
+          "available": 0,
+          "other": 18
+        }
+      }
+    },
+    "FB": {
+      "low_vol": {
+        "regime": "low_vol",
+        "source": "results/runs/20260422_154414/FB/training_summary.json → regimes.low_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 278986.84830474854,
+        "level_gain": 21313.076845169067,
+        "derived_gain": 21950.543823242188,
+        "available_gain": 0.0,
+        "other_gain": 235723.22763633728,
+        "level_gain_share": 0.07639455757386791,
+        "derived_gain_share": 0.07867949316114259,
+        "available_gain_share": 0.0,
+        "other_gain_share": 0.8449259492649895,
+        "feature_counts": {
+          "level": 2,
+          "derived": 1,
+          "available": 0,
+          "other": 17
+        }
+      },
+      "high_vol": {
+        "regime": "high_vol",
+        "source": "results/runs/20260422_154414/FB/training_summary.json → regimes.high_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 67366.08986568451,
+        "level_gain": 0.0,
+        "derived_gain": 1931.8565483093262,
+        "available_gain": 0.0,
+        "other_gain": 65434.23331737518,
+        "level_gain_share": 0.0,
+        "derived_gain_share": 0.028676987964732552,
+        "available_gain_share": 0.0,
+        "other_gain_share": 0.9713230120352675,
+        "feature_counts": {
+          "level": 0,
+          "derived": 1,
+          "available": 0,
+          "other": 19
+        }
+      }
+    },
+    "FU": {
+      "low_vol": {
+        "regime": "low_vol",
+        "source": "results/runs/20260422_154414/FU/training_summary.json → regimes.low_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 1007949.9118127823,
+        "level_gain": 17076.226902008057,
+        "derived_gain": 139866.29240989685,
+        "available_gain": 0.0,
+        "other_gain": 851007.3925008774,
+        "level_gain_share": 0.016941543128166682,
+        "derived_gain_share": 0.13876313770229862,
+        "available_gain_share": 0.0,
+        "other_gain_share": 0.8442953191695347,
+        "feature_counts": {
+          "level": 1,
+          "derived": 5,
+          "available": 0,
+          "other": 14
+        }
+      },
+      "high_vol": {
+        "regime": "high_vol",
+        "source": "results/runs/20260422_154414/FU/training_summary.json → regimes.high_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 180216.85883045197,
+        "level_gain": 0.0,
+        "derived_gain": 44493.561970710754,
+        "available_gain": 0.0,
+        "other_gain": 135723.2968597412,
+        "level_gain_share": 0.0,
+        "derived_gain_share": 0.2468890106034436,
+        "available_gain_share": 0.0,
+        "other_gain_share": 0.7531109893965564,
+        "feature_counts": {
+          "level": 0,
+          "derived": 6,
+          "available": 0,
+          "other": 14
+        }
+      }
+    },
+    "JD": {
+      "low_vol": {
+        "regime": "low_vol",
+        "source": "results/runs/20260422_154414/JD/training_summary.json → regimes.low_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 71382.16931533813,
+        "level_gain": 0.0,
+        "derived_gain": 0.0,
+        "available_gain": 0.0,
+        "other_gain": 71382.16931533813,
+        "level_gain_share": 0.0,
+        "derived_gain_share": 0.0,
+        "available_gain_share": 0.0,
+        "other_gain_share": 1.0,
+        "feature_counts": {
+          "level": 0,
+          "derived": 0,
+          "available": 0,
+          "other": 20
+        }
+      },
+      "high_vol": {
+        "regime": "high_vol",
+        "source": "results/runs/20260422_154414/JD/training_summary.json → regimes.high_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 30710.24558019638,
+        "level_gain": 0.0,
+        "derived_gain": 2395.927077293396,
+        "available_gain": 0.0,
+        "other_gain": 28314.318502902985,
+        "level_gain_share": 0.0,
+        "derived_gain_share": 0.07801719042059431,
+        "available_gain_share": 0.0,
+        "other_gain_share": 0.9219828095794057,
+        "feature_counts": {
+          "level": 0,
+          "derived": 3,
+          "available": 0,
+          "other": 17
+        }
+      }
+    },
+    "JM": {
+      "low_vol": {
+        "regime": "low_vol",
+        "source": "results/runs/20260422_154414/JM/training_summary.json → regimes.low_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 143109.67983055115,
+        "level_gain": 2131.5956087112427,
+        "derived_gain": 27214.740070343018,
+        "available_gain": 0.0,
+        "other_gain": 113763.34415149689,
+        "level_gain_share": 0.014894838778447104,
+        "derived_gain_share": 0.19016701108245507,
+        "available_gain_share": 0.0,
+        "other_gain_share": 0.7949381501390979,
+        "feature_counts": {
+          "level": 1,
+          "derived": 4,
+          "available": 0,
+          "other": 15
+        }
+      },
+      "high_vol": {
+        "regime": "high_vol",
+        "source": "results/runs/20260422_154414/JM/training_summary.json → regimes.high_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 195733.82043278217,
+        "level_gain": 0.0,
+        "derived_gain": 4077.514283001423,
+        "available_gain": 0.0,
+        "other_gain": 191656.30614978075,
+        "level_gain_share": 0.0,
+        "derived_gain_share": 0.020831935298589344,
+        "available_gain_share": 0.0,
+        "other_gain_share": 0.9791680647014107,
+        "feature_counts": {
+          "level": 0,
+          "derived": 1,
+          "available": 0,
+          "other": 19
+        }
+      }
+    },
+    "M": {
+      "low_vol": {
+        "regime": "low_vol",
+        "source": "results/runs/20260422_154414/M/training_summary.json → regimes.low_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 207485.29792165756,
+        "level_gain": 0.0,
+        "derived_gain": 13018.23048210144,
+        "available_gain": 0.0,
+        "other_gain": 194467.06743955612,
+        "level_gain_share": 0.0,
+        "derived_gain_share": 0.06274290570224823,
+        "available_gain_share": 0.0,
+        "other_gain_share": 0.9372570942977517,
+        "feature_counts": {
+          "level": 0,
+          "derived": 2,
+          "available": 0,
+          "other": 18
+        }
+      },
+      "high_vol": {
+        "regime": "high_vol",
+        "source": "results/runs/20260422_154414/M/training_summary.json → regimes.high_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 64514.88637018204,
+        "level_gain": 2153.3609132766724,
+        "derived_gain": 9033.436153411865,
+        "available_gain": 0.0,
+        "other_gain": 53328.0893034935,
+        "level_gain_share": 0.033377737053132725,
+        "derived_gain_share": 0.14002095735825407,
+        "available_gain_share": 0.0,
+        "other_gain_share": 0.8266013055886132,
+        "feature_counts": {
+          "level": 1,
+          "derived": 3,
+          "available": 0,
+          "other": 16
+        }
+      }
+    },
+    "PB": {
+      "low_vol": {
+        "regime": "low_vol",
+        "source": "results/runs/20260422_154414/PB/training_summary.json → regimes.low_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 575695.6842601299,
+        "level_gain": 0.0,
+        "derived_gain": 30624.874644756317,
+        "available_gain": 0.0,
+        "other_gain": 545070.8096153736,
+        "level_gain_share": 0.0,
+        "derived_gain_share": 0.05319629012698725,
+        "available_gain_share": 0.0,
+        "other_gain_share": 0.9468037098730128,
+        "feature_counts": {
+          "level": 0,
+          "derived": 1,
+          "available": 0,
+          "other": 19
+        }
+      },
+      "high_vol": {
+        "regime": "high_vol",
+        "source": "results/runs/20260422_154414/PB/training_summary.json → regimes.high_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 179792.12054729462,
+        "level_gain": 5281.8581256866455,
+        "derived_gain": 10692.44040775299,
+        "available_gain": 0.0,
+        "other_gain": 163817.82201385498,
+        "level_gain_share": 0.02937758400984677,
+        "derived_gain_share": 0.059471129075093845,
+        "available_gain_share": 0.0,
+        "other_gain_share": 0.9111512869150594,
+        "feature_counts": {
+          "level": 1,
+          "derived": 3,
+          "available": 0,
+          "other": 16
+        }
+      }
+    },
+    "PG": {
+      "low_vol": {
+        "regime": "low_vol",
+        "source": "results/runs/20260422_154414/PG/training_summary.json → regimes.low_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 217994.81196069717,
+        "level_gain": 0.0,
+        "derived_gain": 27562.542514801025,
+        "available_gain": 0.0,
+        "other_gain": 190432.26944589615,
+        "level_gain_share": 0.0,
+        "derived_gain_share": 0.1264366902445841,
+        "available_gain_share": 0.0,
+        "other_gain_share": 0.8735633097554159,
+        "feature_counts": {
+          "level": 0,
+          "derived": 5,
+          "available": 0,
+          "other": 15
+        }
+      },
+      "high_vol": {
+        "regime": "high_vol",
+        "source": "results/runs/20260422_154414/PG/training_summary.json → regimes.high_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 120042.52436065674,
+        "level_gain": 1711.5780925750732,
+        "derived_gain": 6671.565262794495,
+        "available_gain": 0.0,
+        "other_gain": 111659.38100528717,
+        "level_gain_share": 0.014258098133897902,
+        "derived_gain_share": 0.05557668249919828,
+        "available_gain_share": 0.0,
+        "other_gain_share": 0.9301652193669038,
+        "feature_counts": {
+          "level": 1,
+          "derived": 5,
+          "available": 0,
+          "other": 14
+        }
+      }
+    },
+    "RB": {
+      "low_vol": {
+        "regime": "low_vol",
+        "source": "results/runs/20260422_154414/RB/training_summary.json → regimes.low_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 161428.5465886593,
+        "level_gain": 0.0,
+        "derived_gain": 5142.085210800171,
+        "available_gain": 0.0,
+        "other_gain": 156286.46137785912,
+        "level_gain_share": 0.0,
+        "derived_gain_share": 0.03185363010114231,
+        "available_gain_share": 0.0,
+        "other_gain_share": 0.9681463698988577,
+        "feature_counts": {
+          "level": 0,
+          "derived": 1,
+          "available": 0,
+          "other": 19
+        }
+      },
+      "high_vol": {
+        "regime": "high_vol",
+        "source": "results/runs/20260422_154414/RB/training_summary.json → regimes.high_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 113449.16580057144,
+        "level_gain": 2265.845293045044,
+        "derived_gain": 0.0,
+        "available_gain": 0.0,
+        "other_gain": 111183.3205075264,
+        "level_gain_share": 0.019972339832168524,
+        "derived_gain_share": 0.0,
+        "available_gain_share": 0.0,
+        "other_gain_share": 0.9800276601678315,
+        "feature_counts": {
+          "level": 1,
+          "derived": 0,
+          "available": 0,
+          "other": 19
+        }
+      }
+    },
+    "RR": {
+      "low_vol": {
+        "regime": "low_vol",
+        "source": "results/runs/20260422_154414/RR/training_summary.json → regimes.low_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 963603055856.0,
+        "level_gain": 0.0,
+        "derived_gain": 442925123328.0,
+        "available_gain": 0.0,
+        "other_gain": 520677932528.0,
+        "level_gain_share": 0.0,
+        "derived_gain_share": 0.4596551667579916,
+        "available_gain_share": 0.0,
+        "other_gain_share": 0.5403448332420083,
+        "feature_counts": {
+          "level": 0,
+          "derived": 7,
+          "available": 0,
+          "other": 13
+        }
+      },
+      "high_vol": {
+        "regime": "high_vol",
+        "source": "results/runs/20260422_154414/RR/training_summary.json → regimes.high_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": Infinity,
+        "level_gain": 0.0,
+        "derived_gain": 0.0,
+        "available_gain": 0.0,
+        "other_gain": Infinity,
+        "level_gain_share": 0.0,
+        "derived_gain_share": 0.0,
+        "available_gain_share": 0.0,
+        "other_gain_share": NaN,
+        "feature_counts": {
+          "level": 0,
+          "derived": 18,
+          "available": 0,
+          "other": 2
+        }
+      }
+    },
+    "RU": {
+      "low_vol": {
+        "regime": "low_vol",
+        "source": "results/runs/20260422_154414/RU/training_summary.json → regimes.low_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 201052.88293409348,
+        "level_gain": 0.0,
+        "derived_gain": 22682.41012620926,
+        "available_gain": 0.0,
+        "other_gain": 178370.47280788422,
+        "level_gain_share": 0.0,
+        "derived_gain_share": 0.11281812921650425,
+        "available_gain_share": 0.0,
+        "other_gain_share": 0.8871818707834958,
+        "feature_counts": {
+          "level": 0,
+          "derived": 4,
+          "available": 0,
+          "other": 16
+        }
+      },
+      "high_vol": {
+        "regime": "high_vol",
+        "source": "results/runs/20260422_154414/RU/training_summary.json → regimes.high_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 60919.50724554062,
+        "level_gain": 0.0,
+        "derived_gain": 2414.5925035476685,
+        "available_gain": 0.0,
+        "other_gain": 58504.91474199295,
+        "level_gain_share": 0.0,
+        "derived_gain_share": 0.03963578519792475,
+        "available_gain_share": 0.0,
+        "other_gain_share": 0.9603642148020752,
+        "feature_counts": {
+          "level": 0,
+          "derived": 2,
+          "available": 0,
+          "other": 18
+        }
+      }
+    },
+    "SN": {
+      "low_vol": {
+        "regime": "low_vol",
+        "source": "results/runs/20260422_154414/SN/training_summary.json → regimes.low_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 694572.6475105286,
+        "level_gain": 9654.299739837646,
+        "derived_gain": 20710.715768814087,
+        "available_gain": 0.0,
+        "other_gain": 664207.6320018768,
+        "level_gain_share": 0.013899625581917697,
+        "derived_gain_share": 0.02981792594776797,
+        "available_gain_share": 0.0,
+        "other_gain_share": 0.9562824484703143,
+        "feature_counts": {
+          "level": 1,
+          "derived": 2,
+          "available": 0,
+          "other": 17
+        }
+      },
+      "high_vol": {
+        "regime": "high_vol",
+        "source": "results/runs/20260422_154414/SN/training_summary.json → regimes.high_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 332034.0959236622,
+        "level_gain": 0.0,
+        "derived_gain": 13284.369514465332,
+        "available_gain": 0.0,
+        "other_gain": 318749.72640919685,
+        "level_gain_share": 0.0,
+        "derived_gain_share": 0.04000905231587883,
+        "available_gain_share": 0.0,
+        "other_gain_share": 0.9599909476841212,
+        "feature_counts": {
+          "level": 0,
+          "derived": 2,
+          "available": 0,
+          "other": 18
+        }
+      }
+    },
+    "SP": {
+      "low_vol": {
+        "regime": "low_vol",
+        "source": "results/runs/20260422_154414/SP/training_summary.json → regimes.low_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 150908.51389408112,
+        "level_gain": 5156.850831031799,
+        "derived_gain": 15432.695433139801,
+        "available_gain": 0.0,
+        "other_gain": 130318.96762990952,
+        "level_gain_share": 0.03417203375716272,
+        "derived_gain_share": 0.10226524027644737,
+        "available_gain_share": 0.0,
+        "other_gain_share": 0.8635627259663899,
+        "feature_counts": {
+          "level": 2,
+          "derived": 4,
+          "available": 0,
+          "other": 14
+        }
+      },
+      "high_vol": {
+        "regime": "high_vol",
+        "source": "results/runs/20260422_154414/SP/training_summary.json → regimes.high_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 63123.25174808502,
+        "level_gain": 0.0,
+        "derived_gain": 6478.356204986572,
+        "available_gain": 0.0,
+        "other_gain": 56644.89554309845,
+        "level_gain_share": 0.0,
+        "derived_gain_share": 0.10263026738293955,
+        "available_gain_share": 0.0,
+        "other_gain_share": 0.8973697326170604,
+        "feature_counts": {
+          "level": 0,
+          "derived": 4,
+          "available": 0,
+          "other": 16
+        }
+      }
+    },
+    "V": {
+      "low_vol": {
+        "regime": "low_vol",
+        "source": "results/runs/20260422_154414/V/training_summary.json → regimes.low_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 98410.41420888901,
+        "level_gain": 4127.895701408386,
+        "derived_gain": 1751.9693546295166,
+        "available_gain": 0.0,
+        "other_gain": 92530.5491528511,
+        "level_gain_share": 0.04194572022272344,
+        "derived_gain_share": 0.01780268245706935,
+        "available_gain_share": 0.0,
+        "other_gain_share": 0.9402515973202072,
+        "feature_counts": {
+          "level": 2,
+          "derived": 1,
+          "available": 0,
+          "other": 17
+        }
+      },
+      "high_vol": {
+        "regime": "high_vol",
+        "source": "results/runs/20260422_154414/V/training_summary.json → regimes.high_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 50972.08385324478,
+        "level_gain": 627.840106010437,
+        "derived_gain": 593.2736988067627,
+        "available_gain": 0.0,
+        "other_gain": 49750.97004842758,
+        "level_gain_share": 0.012317332519072004,
+        "derived_gain_share": 0.01163918862950305,
+        "available_gain_share": 0.0,
+        "other_gain_share": 0.976043478851425,
+        "feature_counts": {
+          "level": 1,
+          "derived": 1,
+          "available": 0,
+          "other": 18
+        }
+      }
+    },
+    "WR": {
+      "low_vol": {
+        "regime": "low_vol",
+        "source": "results/runs/20260422_154414/WR/training_summary.json → regimes.low_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 1877915293265152.0,
+        "level_gain": 0.0,
+        "derived_gain": 150886691578368.0,
+        "available_gain": 0.0,
+        "other_gain": 1727028601686784.0,
+        "level_gain_share": 0.0,
+        "derived_gain_share": 0.08034797528914078,
+        "available_gain_share": 0.0,
+        "other_gain_share": 0.9196520247108592,
+        "feature_counts": {
+          "level": 0,
+          "derived": 2,
+          "available": 0,
+          "other": 18
+        }
+      },
+      "high_vol": {
+        "regime": "high_vol",
+        "source": "results/runs/20260422_154414/WR/training_summary.json → regimes.high_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 196754398117888.0,
+        "level_gain": 0.0,
+        "derived_gain": 44214199517184.0,
+        "available_gain": 0.0,
+        "other_gain": 152540198600704.0,
+        "level_gain_share": 0.0,
+        "derived_gain_share": 0.22471771884200767,
+        "available_gain_share": 0.0,
+        "other_gain_share": 0.7752822811579924,
+        "feature_counts": {
+          "level": 0,
+          "derived": 6,
+          "available": 0,
+          "other": 14
+        }
+      }
+    },
+    "Y": {
+      "low_vol": {
+        "regime": "low_vol",
+        "source": "results/runs/20260422_154414/Y/training_summary.json → regimes.low_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 196976.58006048203,
+        "level_gain": 0.0,
+        "derived_gain": 13653.320575714111,
+        "available_gain": 0.0,
+        "other_gain": 183323.2594847679,
+        "level_gain_share": 0.0,
+        "derived_gain_share": 0.06931443611987696,
+        "available_gain_share": 0.0,
+        "other_gain_share": 0.930685563880123,
+        "feature_counts": {
+          "level": 0,
+          "derived": 3,
+          "available": 0,
+          "other": 17
+        }
+      },
+      "high_vol": {
+        "regime": "high_vol",
+        "source": "results/runs/20260422_154414/Y/training_summary.json → regimes.high_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 78378.17361068726,
+        "level_gain": 0.0,
+        "derived_gain": 3954.8665161132812,
+        "available_gain": 0.0,
+        "other_gain": 74423.30709457397,
+        "level_gain_share": 0.0,
+        "derived_gain_share": 0.050458773583542844,
+        "available_gain_share": 0.0,
+        "other_gain_share": 0.9495412264164571,
+        "feature_counts": {
+          "level": 0,
+          "derived": 2,
+          "available": 0,
+          "other": 18
+        }
+      }
+    },
+    "ZN": {
+      "low_vol": {
+        "regime": "low_vol",
+        "source": "results/runs/20260422_154414/ZN/training_summary.json → regimes.low_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 622216.9837846756,
+        "level_gain": 0.0,
+        "derived_gain": 22376.23672389984,
+        "available_gain": 0.0,
+        "other_gain": 599840.7470607758,
+        "level_gain_share": 0.0,
+        "derived_gain_share": 0.03596211178260502,
+        "available_gain_share": 0.0,
+        "other_gain_share": 0.964037888217395,
+        "feature_counts": {
+          "level": 0,
+          "derived": 2,
+          "available": 0,
+          "other": 18
+        }
+      },
+      "high_vol": {
+        "regime": "high_vol",
+        "source": "results/runs/20260422_154414/ZN/training_summary.json → regimes.high_vol.metrics.top_features",
+        "is_full_importance": false,
+        "rows_available": 20,
+        "gain_total": 14027.184999465942,
+        "level_gain": 0.0,
+        "derived_gain": 830.0270080566406,
+        "available_gain": 0.0,
+        "other_gain": 13197.157991409302,
+        "level_gain_share": 0.0,
+        "derived_gain_share": 0.059172742648524436,
+        "available_gain_share": 0.0,
+        "other_gain_share": 0.9408272573514755,
+        "feature_counts": {
+          "level": 0,
+          "derived": 3,
+          "available": 0,
+          "other": 17
+        }
+      }
+    }
+  }
+}
