@@ -286,6 +286,11 @@ T3.3 实跑 ablation (在 T4.2 产出后)
 | T3.3*-d | 裁决 `available_dummy` 去留 + §9 Q2 回填 | superseded | 2026-04-23T08:58:13Z | – | 依赖 T3.3\*-c，同 superseded；§ 9 Q2 将在 R-P 路径完成后一并裁决 |
 | T3.3*-e | （条件）Ablation-B：`derived.enabled=false` | rejected | 2026-04-23T08:58:13Z | – | § 14.4 证据反向（改善组 derived 更多），否决 |
 | T3.3*-f | 最终裁决汇总 | deferred | 2026-04-23T08:58:13Z | – | 延迟到 § 9 Q5 决策 + R-P 新 batch 完成后 |
+| T15.1 | config + dataset 过滤实现（P2 option A） | todo | – | – | 新增 `mid_weekly.{min_active_ratio, drop_step_dummy}`；扩展 `pipeline/dataset.py::_merge_mid_weekly_features`；cache 签名加入新开关 |
+| T15.2 | 单测 | todo | – | – | `tests/test_dataset_and_modeling.py::test_mid_weekly_quality_filter`；覆盖"稀疏列 drop / step-dummy drop / 阈值边界" |
+| T15.3 | P2 新 batch run | todo | – | – | 新 run_id；`--force-rebuild`；磁盘 ≥5 GiB + 工作树干净（§13 安全闸） |
+| T15.4 | A/B 对比 P2 vs {baseline, candidate} | todo | – | – | 复用 `scripts/compare_runs.py`；输出 `results/comparison/p2_vs_{baseline,candidate}.{csv,md,png}` |
+| T15.5 | 最终结论 + config 定稿 | todo | – | – | 追加 `docs/midweekly_regression_diagnosis.md § 15`；裁决 `mid_weekly` 最终配置；回填 §9 Q5 |
 
 > status 取值：`todo` / `in_progress` / `blocked` / `done`。`blocked` 必须在备注里写阻塞原因 + 触发的 § 9 决策点。
 
@@ -301,7 +306,7 @@ T3.3 实跑 ablation (在 T4.2 产出后)
 | Q2 | T3.3* | 哑变量是否保留（依赖 ablation 结果） | 待 T3.3*-d |
 | Q3 | T3.3*-a | 是否允许扩展 `pipeline/modeling.py` 把 full `feature_importance_all` 落到每品种 `training_summary.json`（batch run 无 `models/<regime>/feature_importance.json`，当前只有 top-20）。两种路线：**A** 改 modeling.py 的 `metrics` dict（受 §10.1 不变量约束，但此处目的是**记录**全 gain，不动回测/损失逻辑，可视作合规扩展）+ 用 `--resume-run` **不合规**、须新 run_id 重跑完整 25 品种（§13 不变量 2）；**B** 维持 top-20 口径，承认 T3.3*-a 口径有偏，直接跑 ablation（T3.3*-b..-d）；**C** 让 `train_products.py` 临时设 `model.persist_models=true`、跑一次产出 `feature_importance.json`（磁盘代价 ≈ 25 × 2 × LGBM 大小）。建议 A 或 C，等用户定夺。 | **paused** 2026-04-23 — § 14 诊断先行后 ROUTE=R-P，本问题暂不再阻塞；仅在 R-P 路径完成后仍有残余回归时再启用 |
 | Q4 | T3.3*-e | 是否关闭 `derived.enabled`（派生列全局 ablation） | **rejected** 2026-04-23 — § 14.4 反向证据：改善组 derived 中位数 > 回归组 |
-| Q5 | T14.5 | Per-product MID 过滤策略三选一：**P1** 对 9 个回归品种直接 `mid_weekly_files=[]`；**P2** 在 `config.yaml::mid_weekly` 加 `min_nonnull_ratio` / `drop_step_dummy` 全局阈值；**P3** per-pid 列级黑名单。建议 P2 → P1 收底；P3 仅在 P2 后仍有残余回归时再用。 | **todo — 待用户定夺** |
+| Q5 | T14.5 | Per-product MID 过滤策略三选一：**P1** 对 9 个回归品种直接 `mid_weekly_files=[]`；**P2** 在 `config.yaml::mid_weekly` 加 `min_nonnull_ratio` / `drop_step_dummy` 全局阈值；**P3** per-pid 列级黑名单。建议 P2 → P1 收底；P3 仅在 P2 后仍有残余回归时再用。 | **decided (P2 option A)** 2026-04-23 — 频率感知版本：`min_active_ratio=0.6` + `drop_step_dummy=true`；0.5 的朴素阈值会误伤改善组（PG 5→0、RR 13→1），A 版本实测改善组保留率高。详见 § 15 |
 
 **Q1 软重复明细与裁决**（决定由用户确认，`scripts/apply_soft_dup_decisions.py` 为执行记录）：
 
@@ -716,3 +721,134 @@ grep -c "^| " docs/midweekly_regression_diagnosis.md
 **验收**：`_audit/T14_5_check.txt` 包含 "ROUTE=R-A|R-D|R-P" 一行。
 
 **停下条件**：若 § 14.1–14.4 证据相互冲突（例如 R-A 和 R-D 都强），停下问用户。
+
+---
+
+## 15. P2 实施：频率感知的 MID 列过滤（§9 Q5 路径 A）
+
+### 15.0 决策与参数
+
+- **§9 Q5 = P2，采用 Option A（频率归一化）**。
+- `min_active_ratio: 0.6` + `drop_step_dummy: true`，对所有 25 个品种统一生效。
+- 朴素 0.5 阈值已在 dry-run 中否决（PG 5→0、RR 13→1、AG 11→2 —— 改善组被误伤）。
+- 频率期望比基于 xlsx **business-day 网格**：日=1.0，周=0.2（数据源只含 `日` 和 `周` 两类频率，每次改动前需重新扫全集）。
+
+### 15.1 T15.1 — config + dataset 过滤实现
+
+**改动范围**（受 §10.1 不变量约束）：
+- `config.yaml::mid_weekly` 新增两项：
+  ```yaml
+  mid_weekly:
+    min_active_ratio: 0.6
+    drop_step_dummy: true
+  ```
+- `pipeline/dataset.py`：在 `_merge_mid_weekly_features` 里，每个 xlsx 读出的稀疏表进入 `_compute_mid_weekly_derivatives` **之前**做列过滤。过滤逻辑：
+  1. 按列头的 `频率` 字段取 `expected_ratio`（`日→1.0, 周→0.2`；其它频率首次出现时记录 warning 并按 1.0 处理——保守保留）。
+  2. `effective_ratio = non_null_ratio / expected_ratio`；若 `< min_active_ratio` → 丢弃。
+  3. 若 `drop_step_dummy` 为真，检测 step-dummy（定义同 § 14.3：首值位置 > 0 **且** 首值之后的非空率 ≥ 0.9）→ 丢弃。
+  4. 被丢的列记进 `cache_meta.json.mid_weekly_dropped`，附理由 (`sparse`|`step_dummy`)。
+- **Cache 签名**必须包含 `min_active_ratio` 与 `drop_step_dummy`——改阈值后重跑要能自动失效缓存；但 §13 不变量 3 仍要求显式 `--force-rebuild` 作为双保险。
+
+**禁止**：
+- 不改 `pipeline/modeling.py` / `pipeline/backtest.py`。
+- 不往 `scripts/` 新加脚本（复用已有的 `diagnose_midweekly_regression.py` 做事后审计即可）。
+
+**验收** (`results/comparison/_audit/T15_1_check.txt`)：
+```bash
+python -c "
+import yaml
+c = yaml.safe_load(open('config.yaml').read())['mid_weekly']
+assert c.get('min_active_ratio') == 0.6, c
+assert c.get('drop_step_dummy') is True, c
+print('config OK')
+"
+python -m unittest tests.test_dataset_and_modeling -k mid_weekly -v
+```
+
+### 15.2 T15.2 — 单测
+
+**新增** `tests/test_dataset_and_modeling.py::test_mid_weekly_quality_filter`：
+- 合成一个 3 列的 xlsx：
+  1. 频率=日、非空比=0.9（应保留）
+  2. 频率=日、非空比=0.3（应 drop：eff=0.3 < 0.6）
+  3. 频率=周、非空比=0.15（应保留：eff=0.75）
+- 第 4 列为 step-dummy 样本：频率=日、非空比=0.95 但首值位置在中段。
+- 跑 `prepare`，断言 (a)(c) 列存在于 feature_cols，(b)(d) 不在。
+- 另断言 `cache_meta["mid_weekly_dropped"]` 里包含 (b) 与 (d)。
+
+**验收** (`results/comparison/_audit/T15_2_check.txt`)：所有测试通过。
+
+### 15.3 T15.3 — P2 新 batch run
+
+**前置（§13 安全闸）**：
+```bash
+git status --porcelain | wc -l   # = 0
+df -h /Users/zhouzian/Desktop | awk 'NR==2 { if ($4+0 < 5) exit 1 }'
+```
+若任一不满足，**停下问用户**。
+
+**步骤**：
+1. 产生新 `run_id`（**不**用 `--resume-run`，§13 不变量 2）。
+2. `python pipeline/train_products.py --all --force-rebuild`。
+3. 验 `run_summary.csv`：`mid_weekly_feature_count` 在 9 个回归品种中应显著低于 candidate；改善组下降应较小。
+
+**验收** (`results/comparison/_audit/T15_3_check.txt`)：
+```bash
+test -f results/runs/<p2_run_id>/run_summary.csv
+python -c "
+import pandas as pd
+c = pd.read_csv('results/runs/20260422_154414/run_summary.csv').query('status==\"success\"').set_index('product_id')
+p = pd.read_csv('results/runs/<p2_run_id>/run_summary.csv').query('status==\"success\"').set_index('product_id')
+assert set(c.index) == set(p.index), 'success set must match candidate'
+diff = (c['mid_weekly_feature_count'] - p['mid_weekly_feature_count']).reindex(c.index)
+print(diff.describe())
+# 预期回归组平均 drop 更多
+regressed=['FB','FU','Y','B','SN','RU','BB','JD','M']
+print('regressed drop:', diff.loc[diff.index.intersection(regressed)].describe())
+"
+```
+
+**停下条件**：
+- 任一前置检查不过（磁盘/工作树）。
+- 新 run 的 success 集合比 candidate 缩小。
+- MID feature_count 在 ≥80% 改善品种上下降超过 30% —— 说明 P2 过于激进。
+
+### 15.4 T15.4 — A/B 对比
+
+**步骤**：
+```bash
+python scripts/compare_runs.py --baseline 20260416_170652 --candidate <p2_run_id> --output results/comparison/p2_vs_baseline
+python scripts/compare_runs.py --baseline 20260422_154414 --candidate <p2_run_id> --output results/comparison/p2_vs_candidate
+```
+
+**裁决标准**：
+- **成功**：
+  - `p2_vs_baseline` 中位数 ΔSharpe > `candidate_vs_baseline` 的中位数（+0.098），**且**
+  - `p2_vs_baseline` 退步品种数 < 9（即 candidate 里 9 个回归品种至少修复一半），**且**
+  - `p2_vs_candidate` 中 9 个改善品种 ΔSharpe 中位数 ≥ −0.1（改善组不被误伤）。
+- 否则回到 § 15.5 的处置分支。
+
+**验收** (`results/comparison/_audit/T15_4_check.txt`)：三文件存在 + 打印中位数/退步计数。
+
+### 15.5 T15.5 — 最终结论与 config 定稿
+
+**追加** `docs/midweekly_regression_diagnosis.md § 15`：
+1. 三 run 矩阵（baseline / candidate / p2）的 Sharpe × 25 品种。
+2. 9 个原回归品种的最终归属（修复 / 仍回归 / 建议 P1 收底）。
+3. 改善组是否受损的量化（ΔΔSharpe 分布）。
+4. 对 `config.yaml::mid_weekly` 的最终推荐（四个字段最终值：`available_dummy` / `derived.enabled` / `min_active_ratio` / `drop_step_dummy`）。
+
+**三种处置分支**：
+- **A. 全胜**：保留当前 P2 配置；更新 §9 Q5 状态 → `decided (P2 kept)`；T3.3\*-f 也在此节内完成；关闭整个 midweekly 任务线。
+- **B. 部分胜利**：多数品种修复但仍有少数回归 → 触发 §9 新增 **Q6**（是否对残余回归品种走 P1 收底？），等用户决定，不自动动作。
+- **C. 整体恶化**：P2 比 candidate 还差 → `config.yaml::mid_weekly.min_active_ratio` 回默认（0.0，等于关闭过滤），触发 §9 **Q7**（重新考虑 ROUTE）。
+
+**最终 commit**：`midweekly: T15 complete — P2 frequency-aware filter <verdict>`。
+
+---
+
+## 16. 不变量补充（T15 阶段）
+
+1. 新增 config 字段必须进入 cache 签名（`pipeline/dataset.py::FactorDatasetBuilder._build_signature` 或同层函数）。
+2. 单测必须**独立**于 registry 真实数据（用合成 xlsx，避免与 25 个真实品种互相影响）。
+3. P2 run 产物保留 ≥1 个月（与其它 run 一样作为对照）。
