@@ -288,8 +288,8 @@ T3.3 实跑 ablation (在 T4.2 产出后)
 | T3.3*-f | 最终裁决汇总 | deferred | 2026-04-23T08:58:13Z | – | 延迟到 § 9 Q5 决策 + R-P 新 batch 完成后 |
 | T15.1 | config + dataset 过滤实现（P2 option A） | done | 2026-04-23T09:56:45Z | `config.yaml` · `pipeline/dataset.py::_apply_mid_weekly_quality_filter` · cache signature 接入 `mid_weekly_filter` · `_mid_weekly_dropped` 审计字段 · 验收 `_audit/T15_1_check.txt` | 真实 FU 8→4 dry-run：4 step-dummy 全部按 §14.3 结果丢掉；不动 modeling.py / backtest.py |
 | T15.2 | 单测 | done | 2026-04-23T09:57:06Z | `tests/test_dataset_and_modeling.py::test_mid_weekly_quality_filter` · 验收 `_audit/T15_2_check.txt` | 18/18 测试通过；合成 xlsx 覆盖 dense-daily/sparse-daily/正常周频/step-dummy 四类 |
-| T15.3a | P2 新 batch — 先跑 9 回归品种 | todo | – | – | `--product FB …` 9 个；先验是否修复；成功再做 T15.3b |
-| T15.3b | P2 新 batch — 剩余 16 品种 | conditional | – | – | 仅在 T15.3a 确认 P2 对回归组有修复后再跑；否则回头调参 |
+| T15.3a | P2 新 batch — 先跑 9 回归品种 | done | 2026-04-23T13:22:01Z | run_id `20260423_180440` · 训练日志 `_audit/t15_3a_run_logs/train.log` · 验收 `_audit/T15_3a_check.txt` · 对比报告 `results/comparison/p2_vs_{baseline,candidate}.{csv,md,png}` | 9/9 success；median Δp2-candidate=+0.157；5/9 better-than-candidate；4/9 fully recovered（M +1.60、FU +1.10、Y +0.83、B +0.48、JD +0.14）；1/9 worse (RU -0.62)；2/9 untouched (FB/BB — 0 列被过滤) |
+| T15.3b | P2 新 batch — 剩余 16 品种 | conditional | – | – | 仅在用户确认"P2 有效且未误伤改善组风险低"后执行；待决策 |
 | T15.4 | A/B 对比 P2 vs {baseline, candidate} | todo | – | – | 复用 `scripts/compare_runs.py`；输出 `results/comparison/p2_vs_{baseline,candidate}.{csv,md,png}`；回归组可在 T15.3a 后就出初步报告 |
 | T15.5 | 最终结论 + config 定稿 | todo | – | – | 追加 `docs/midweekly_regression_diagnosis.md § 15`；裁决 `mid_weekly` 最终配置；回填 §9 Q5 |
 
