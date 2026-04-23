@@ -50,6 +50,16 @@ mid_weekly:
     transforms: [ret, zscore, pct_rank]
   level_keep: true                 # keep raw MID_* level columns alongside derivatives
   missing_ratio_relax: 0.65        # applied only to MID_* cols, replaces default 0.35
+  # § 15 P2 option A — frequency-aware quality filter applied before derivation/merge.
+  # Per xlsx column: eff_ratio = non_null_ratio / expected_ratio(frequency).
+  # eff_ratio < min_active_ratio  → drop column (and its AVAILABLE / derived).
+  # If drop_step_dummy is true, also drop columns whose first valid observation is
+  # not at the earliest row AND post-first non-null rate ≥ 0.9 (step-dummy pattern).
+  min_active_ratio: 0.6
+  drop_step_dummy: true
+  freq_expected_ratio:             # expected non-null ratio on xlsx business-day grid
+    "日": 1.0
+    "周": 0.2
 
 batch_training:
   enforce_registry_coverage: true

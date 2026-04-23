@@ -1,0 +1,17 @@
+### T15.2 acceptance (plan § 15.2)
+Run at: 2026-04-23T09:57:06Z
+
+-- targeted unit test --
+test_mid_weekly_quality_filter (test_dataset_and_modeling.DatasetAndModelingTest.test_mid_weekly_quality_filter)
+§ 15 T15.2: frequency-aware MID column filter. ... ok
+
+----------------------------------------------------------------------
+Ran 1 test in 0.109s
+
+OK
+
+-- full suite (regression check) --
+----------------------------------------------------------------------
+Ran 18 tests in 1.554s
+
+OK (skipped=1)

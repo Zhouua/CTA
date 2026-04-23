@@ -103,6 +103,7 @@ def _resolve_cache_paths(
     use_engineered_features: bool,
     target_horizon: int,
     mid_weekly_files: list[str],
+    mid_weekly_filter_spec: dict[str, Any] | None = None,
 ) -> tuple[Path, Path]:
     if runtime_cfg["enabled"] and product_id and "product_cache_dir" in paths_cfg:
         product_cache_dir = resolve_path(config_dir, paths_cfg["product_cache_dir"]) / product_id
@@ -117,6 +118,7 @@ def _resolve_cache_paths(
                 "use_engineered_features": use_engineered_features,
                 "target_horizon": target_horizon,
                 "mid_weekly_files": sorted(mid_weekly_files),
+                "mid_weekly_filter": mid_weekly_filter_spec or {},
             }
         )
         return (
@@ -143,6 +145,19 @@ def build_data_settings(
     derived_cfg = get_section(mid_weekly_cfg, "derived", {}) if isinstance(mid_weekly_cfg, dict) else {}
     product_id = str(product_cfg.get("product_id", "")).upper()
     raw_data_path = _resolve_raw_data_path(config_dir, paths_cfg, product_cfg)
+    # § 15 P2: the quality-filter knobs affect which MID_* columns land in the
+    # feature matrix, so they must enter the cache signature — otherwise flipping
+    # `min_active_ratio` silently reads stale cache.
+    mw_filter_spec: dict[str, Any] = {}
+    if isinstance(mid_weekly_cfg, dict):
+        mw_filter_spec = {
+            "min_active_ratio": float(mid_weekly_cfg.get("min_active_ratio", 0.0) or 0.0),
+            "drop_step_dummy": bool(mid_weekly_cfg.get("drop_step_dummy", False)),
+            "freq_expected_ratio": {
+                str(k): float(v)
+                for k, v in (mid_weekly_cfg.get("freq_expected_ratio", {}) or {}).items()
+            },
+        }
     merged_cache, cache_meta = _resolve_cache_paths(
         config_dir=config_dir,
         paths_cfg=paths_cfg,
@@ -152,6 +167,7 @@ def build_data_settings(
         use_engineered_features=bool(data_cfg.get("use_engineered_features", True)),
         target_horizon=int(data_cfg.get("target_horizon", 5)),
         mid_weekly_files=list(product_cfg.get("mid_weekly_files", [])),
+        mid_weekly_filter_spec=mw_filter_spec,
     )
 
     required_paths = resolve_paths(config_dir, paths_cfg, ["regime_plot"])
@@ -207,6 +223,13 @@ def build_data_settings(
         "mid_weekly_derived_transforms": [str(t).lower() for t in (derived_cfg.get("transforms", ["ret", "zscore", "pct_rank"]) if isinstance(derived_cfg, dict) else ["ret", "zscore", "pct_rank"])],
         "mid_weekly_level_keep": bool(mid_weekly_cfg.get("level_keep", True)) if isinstance(mid_weekly_cfg, dict) else True,
         "mid_weekly_missing_ratio_relax": float(mid_weekly_cfg.get("missing_ratio_relax", 0.65)) if isinstance(mid_weekly_cfg, dict) else 0.65,
+        # § 15 P2: frequency-aware quality filter (see _apply_mid_weekly_quality_filter).
+        "mid_weekly_min_active_ratio": float(mid_weekly_cfg.get("min_active_ratio", 0.0) or 0.0) if isinstance(mid_weekly_cfg, dict) else 0.0,
+        "mid_weekly_drop_step_dummy": bool(mid_weekly_cfg.get("drop_step_dummy", False)) if isinstance(mid_weekly_cfg, dict) else False,
+        "mid_weekly_freq_expected_ratio": (
+            {str(k): float(v) for k, v in (mid_weekly_cfg.get("freq_expected_ratio", {}) or {}).items()}
+            if isinstance(mid_weekly_cfg, dict) else {}
+        ),
         "vol_window": int(vol_cfg.get("window", 20)),
         "vol_percentage": float(vol_cfg.get("vol_percentage", 0.7)),
         "label_train_only": bool(vol_cfg.get("label_train_only", False)),
@@ -235,6 +258,9 @@ class FactorDatasetBuilder:
         # cache_meta.json when features are read from cache. Maps MID_* col
         # name -> {indicator_name, indicator_id, frequency, unit, source_file}.
         self._mid_weekly_metadata: dict[str, dict[str, str]] = {}
+        # § 15 P2: audit trail of columns dropped by the quality filter
+        # (one entry per dropped column, with reason + metrics).
+        self._mid_weekly_dropped: list[dict[str, Any]] = []
 
     def _read_raw_data(self) -> pd.DataFrame:
         dtype_map = {
@@ -496,6 +522,82 @@ class FactorDatasetBuilder:
             return self._read_mid_weekly_csv(factor_path, seen)
         raise ValueError(f"Unsupported mid-weekly file type: {factor_path}")
 
+    def _apply_mid_weekly_quality_filter(
+        self,
+        factor_df: pd.DataFrame,
+        meta: dict[str, dict[str, str]],
+        source_file: str,
+    ) -> tuple[pd.DataFrame, dict[str, dict[str, str]]]:
+        """§ 15 P2 option A — drop MID columns whose frequency-normalized
+        coverage is too sparse, or which look like step-dummies.
+
+        factor_df is the sparse observation table returned by
+        _read_mid_weekly_xlsx (already sorted ascending by timestamp).
+        Drops are appended to self._mid_weekly_dropped; the returned meta
+        is pruned to match the surviving columns.
+        """
+        min_ratio = float(self.settings.get("mid_weekly_min_active_ratio", 0.0) or 0.0)
+        drop_step = bool(self.settings.get("mid_weekly_drop_step_dummy", False))
+        if min_ratio <= 0.0 and not drop_step:
+            return factor_df, meta
+
+        freq_expected = self.settings.get("mid_weekly_freq_expected_ratio") or {}
+        ts_col = self.timestamp_col
+        total = max(len(factor_df), 1)
+        keep_cols = [ts_col]
+        pruned_meta: dict[str, dict[str, str]] = {}
+        for col in factor_df.columns:
+            if col == ts_col:
+                continue
+            col_meta = meta.get(col) or {}
+            freq = str(col_meta.get("frequency", "") or "")
+            series = factor_df[col]
+            nn = series.notna()
+            nn_count = int(nn.sum())
+            nn_ratio = nn_count / total
+
+            reason: str | None = None
+
+            # Step-dummy first: a column that "starts late" can have a low
+            # overall non-null ratio (and would trip the sparse rule) but
+            # the root cause is the late start, not gappy data. Tagging it
+            # step_dummy gives the audit trail the more specific diagnosis.
+            if drop_step and nn_count > 0:
+                first_pos = int(nn.idxmax())
+                if first_pos > 0:
+                    post_nn = float(nn.iloc[first_pos:].mean())
+                    if post_nn >= 0.9:
+                        reason = f"step_dummy(first_pos={first_pos}, post_nn={post_nn:.2f})"
+
+            # Frequency-aware sparsity filter. Only applied when the
+            # declared frequency has a known expected ratio; unknown
+            # frequencies are kept (conservative).
+            if reason is None and min_ratio > 0.0:
+                expected = freq_expected.get(freq)
+                if expected is not None and expected > 0:
+                    eff = nn_ratio / expected
+                    if eff < min_ratio:
+                        reason = f"sparse(eff={eff:.3f}<{min_ratio}, freq={freq}, nn={nn_ratio:.3f})"
+
+            if reason is not None:
+                self._mid_weekly_dropped.append(
+                    {
+                        "column": col,
+                        "indicator_id": col_meta.get("indicator_id", ""),
+                        "indicator_name": col_meta.get("indicator_name", ""),
+                        "frequency": freq,
+                        "non_null_ratio": round(nn_ratio, 4),
+                        "source_file": col_meta.get("source_file", source_file),
+                        "reason": reason,
+                    }
+                )
+            else:
+                keep_cols.append(col)
+                pruned_meta[col] = col_meta
+
+        filtered = factor_df[keep_cols].reset_index(drop=True)
+        return filtered, pruned_meta
+
     def _compute_mid_weekly_derivatives(
         self, factor_df: pd.DataFrame, level_cols: list[str]
     ) -> tuple[pd.DataFrame | None, list[str]]:
@@ -577,6 +679,12 @@ class FactorDatasetBuilder:
             if not factor_path.exists():
                 raise FileNotFoundError(f"Missing mid-weekly file for product {self.settings['product_id']}: {factor_path}")
             factor_df, meta = self._read_mid_weekly_factor(factor_path, seen)
+            # § 15 P2: drop low-coverage / step-dummy columns before derivation
+            # + merge. Anything dropped here does not produce a level column,
+            # AVAILABLE dummy, or derived factor — purely data-quality gate.
+            factor_df, meta = self._apply_mid_weekly_quality_filter(
+                factor_df, meta, source_file=factor_path.name
+            )
             file_level_cols = [col for col in factor_df.columns if col != self.timestamp_col]
 
             derived_df, derived_cols_file = self._compute_mid_weekly_derivatives(factor_df, file_level_cols)
@@ -769,6 +877,7 @@ class FactorDatasetBuilder:
             "runtime_factor_cols": runtime_factor_cols,
             "mid_weekly_cols": mid_weekly_cols,
             "mid_weekly_metadata": self._mid_weekly_metadata,
+            "mid_weekly_dropped": self._mid_weekly_dropped,
             "engineered_cols": engineered_cols,
             "product_meta": self.settings["product_meta"],
             "runtime_manifest": runtime_manifest,
@@ -831,6 +940,7 @@ class FactorDatasetBuilder:
                 runtime_factor_cols = list(cache_meta.get("runtime_factor_cols", []))
                 mid_weekly_cols = list(cache_meta.get("mid_weekly_cols", []))
                 self._mid_weekly_metadata = dict(cache_meta.get("mid_weekly_metadata", {}))
+                self._mid_weekly_dropped = list(cache_meta.get("mid_weekly_dropped", []))
                 runtime_manifest = dict(cache_meta.get("runtime_manifest", {}))
             else:
                 factor_cols = [col for col in cached.columns if not col.startswith("ENG_") and col not in self._non_factor_columns()]
