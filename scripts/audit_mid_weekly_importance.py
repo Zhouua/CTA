@@ -234,7 +234,7 @@ def _run_ablation(run_dir: Path, product_id: str, baseline_summary: dict[str, An
 
     cmd = [
         sys.executable,
-        "code/train_products.py",
+        "pipeline/train_products.py",
         "--product", product_id,
     ]
     print(f"[ablation] would run: {' '.join(cmd)}  (config override: {override_path})")

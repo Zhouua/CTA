@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from code.build_product_registry import build_product_registry
+from pipeline.build_product_registry import build_product_registry
 
 
 def _write_csv(path: Path, rows: list[str]) -> None:

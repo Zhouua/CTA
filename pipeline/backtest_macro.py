@@ -11,7 +11,7 @@ backtest_macro.py
     4. 分别计算 Benchmark / Combined-Filtered 的 P&L，输出对比报告
 
 运行：
-    python code/backtest_macro.py [--config config.yaml]
+    python pipeline/backtest_macro.py [--config config.yaml]
 
 输出目录：results/backtest_macro/
     macro_backtest_report.png   - 对比图报告

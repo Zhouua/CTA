@@ -5,7 +5,7 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from code.factor_engine import generate_runtime_factors
+from pipeline.factor_engine import generate_runtime_factors
 
 
 class RuntimeFactorEngineTest(unittest.TestCase):
