@@ -7,25 +7,35 @@
 ```
 读取 docs/mid_weekly_integration_plan.md。按照下面的循环执行直到所有任务完成或必须停下问用户：
 
+  代码路径约定：核心管道在 pipeline/（原 code/，已于 2026-04-23 重组），
+  一次性脚本在 scripts/。tests/ 通过 "from pipeline.xxx import ..." 引用。
+  当前阶段（T3.3*）的步骤/验收/停下条件的完整描述在 § 12；阶段性不变量在 § 13。
+
   loop:
     1) 读"§ 8 进度状态"表格,找出第一个 status != done 的任务行。
     2) 如果该任务的"前置条件"未满足,先完成依赖任务。
-    3) 执行该任务"§ 步骤"列出的步骤;只调用文档中明确列出的命令。
-    4) 跑该任务的"§ 验收脚本";输出存在 results/comparison/_audit/ 下,文件名带任务号。
-    5) 若验收通过:把"§ 8 进度状态"中该行 status 改成 done、写入 timestamp 与产出路径,并把
-       本次改动以一次提交落盘(commit message 前缀 "midweekly: ")。若失败:把 status 改成
-       blocked、写入 failure 摘要,并停下问用户。
+    3) 查 § 12 里对应任务小节（T3.3*-a..-f 都在那里）,按"步骤"逐条执行;
+       若任务号不在 § 12 中,回到 § 5 找该任务的步骤;只调用文档中明确列出的命令。
+    4) 跑该任务的"验收脚本";输出存在 results/comparison/_audit/ 下,文件名带任务号
+       （如 T3_3star_a_check.txt / T3_3star_b_check.txt）。
+    5) 若验收通过:把"§ 8 进度状态"中该行 status 改成 done、写入 timestamp 与产出路径,
+       并把本次改动以一次提交落盘(commit message 前缀 "midweekly: ")。
+       若失败:把 status 改成 blocked、写入 failure 摘要,并停下问用户。
     6) 若有"§ 9 待用户决策"中尚未拍板的事项被本次任务触及,停下问用户。
 
   在以下情况停下并问用户:
-    - 任务步骤涉及破坏性操作(删除文件、覆写非缓存文件、git push、reset --hard)。
-    - 验收脚本结果落在文档里"需要人工裁决"的区间。
-    - 决策点 1 (dummy var 有效性) 的验证产出已经齐全,需要用户确认是否保留 _AVAILABLE 列。
+    - 任务步骤涉及破坏性操作(删除非缓存文件、覆写已入库文件、git push、reset --hard)。
+    - 启动任何 batch 训练前:磁盘可用 <5 GiB,或工作树非干净状态(§13 安全闸)。
+    - 验收脚本结果落在文档里"需要人工裁决"的区间(§12 各任务的"停下条件")。
+    - § 9 Q2（dummy var 去留）/ Q3 / Q4 / Q5 里任一项被本次任务触及需要人定夺。
+    - 测试 (python -m unittest discover tests) 出现新失败。
 
   禁止:
     - 跳过验收脚本直接 mark done。
     - 自己新增/扩展任务清单(如确实需要,写到"§ 9 待用户决策"等用户确认)。
-    - 改动 backtest.py 与 modeling.py 的回测/损失逻辑(本计划只允许扩展 dataset.py 与新增脚本)。
+    - 改动 pipeline/backtest.py 与 pipeline/modeling.py 的回测/损失逻辑
+      (§10.1 不变量:本计划只允许扩展 pipeline/dataset.py 与新增 scripts/*）。
+    - 用 `--resume-run` 复用旧 run_id 来做 ablation（§13 不变量:每次 ablation 必须新 run_id）。
 ```
 
 > 如果您手动跑这个 prompt：直接复制上面三反引号内的全部内容当成下一条 user message 即可。
@@ -263,8 +273,13 @@ T3.3 实跑 ablation (在 T4.2 产出后)
 | T3.3 | 哑变量验证脚本 | done | 2026-04-22T07:27:23Z | `scripts/audit_mid_weekly_importance.py` · 验收 `results/comparison/_audit/T3_3_check.txt` · 预览 `results/comparison/_audit/T3_3_preview.{md,json}` | 仅写脚本；骨架支持 full feature_importance.json 与 top_features fallback；`--ablation` 当前发射 skeleton 需后续在 T3.3* 接实际训练 |
 | T4.1 | registry 更新 | done | 2026-04-22T07:40:04Z | `scripts/update_registry_with_mid_weekly.py` · `data/product_registry.json` 25 条被赋值 · `config.yaml` `paths.mid_weekly_dir` 指向 `_cleaned/` · 验收 `results/comparison/_audit/T4_1_check.txt` | 25 个 xlsx 品种全部映射为 `[<PID>.xlsx]`；脚本幂等；17/17 单测通过 |
 | T4.2 | 新 batch run | done | 2026-04-22T09:22:03Z | run_id `20260422_154414` · `results/runs/20260422_154414/run_summary.csv` (25 success / 9 failed / 31 skipped) · 训练日志 `results/comparison/_audit/t4_2_run_logs/train.log` · 验收 `results/comparison/_audit/T4_2_check.txt` | 所有 25 个成功品种 `mid_weekly_feature_count ∈ [39, 201]`（baseline=0）；ZN 首轮因瞬时 IO 空读失败，`--resume-run` 后成功；success 集合与 baseline 完全一致 |
-| T4.3 | A/B 对比报告 | todo | – | – | – |
-| T3.3* | 实跑 ablation + 裁决 | todo | – | – | 依赖 T4.2 |
+| T4.3 | A/B 对比报告 | done | 2026-04-23T06:02:00Z | `results/comparison/midweekly_vs_baseline.{csv,md,png}` · `scripts/compare_runs.py` | 中位数 ΔSharpe = +0.098 (>0)；但退步占比 36.0% > 33.3% → 强制进入 T3.3\* ablation；详见 §12 |
+| T3.3*-a | 全 feature_importance gain 口径（AVAILABLE/derived/level） | todo | – | – | 扩展 `scripts/audit_mid_weekly_importance.py`：读 `results/runs/20260422_154414/*/training_summary.json` 聚合 gain，不限 top-20 |
+| T3.3*-b | Ablation-A 新 batch：`available_dummy=false` | todo | – | – | 依赖 T3.3\*-a；必须 `--force-rebuild`（MID config 不触发 cache 失效） |
+| T3.3*-c | Ablation-A 双向对比 | todo | – | – | 依赖 T3.3\*-b；输出 `results/comparison/ablation_noavail_vs_{baseline,candidate}.{csv,md,png}` |
+| T3.3*-d | 裁决 `available_dummy` 去留 + §9 Q2 回填 | todo | – | – | 依赖 T3.3\*-c；按 §6 规则：gain<5% & Δval_sharpe<0.1 → 关；否则留 |
+| T3.3*-e | （条件）Ablation-B：`derived.enabled=false` | conditional | – | – | 仅当 T3.3\*-d 后 `ablation_noavail_vs_baseline` 仍 ≥1/3 品种回归时触发 |
+| T3.3*-f | 最终裁决汇总 | todo | – | – | `results/comparison/midweekly_verdict.md`：三 run 对比 + 每个回归品种归属 + 对 `config.yaml::mid_weekly` 的最终推荐 |
 
 > status 取值：`todo` / `in_progress` / `blocked` / `done`。`blocked` 必须在备注里写阻塞原因 + 触发的 § 9 决策点。
 
@@ -441,3 +456,150 @@ mid_weekly:
 - `data/product_registry.json` 里每个品种的 `mid_weekly_files: ["<PID>.xlsx"]`（相对 `paths.mid_weekly_dir`）。
 - 写入由 `scripts/update_registry_with_mid_weekly.py` 幂等执行：扫 `_cleaned/*.xlsx`，匹配不到的品种保持空列表。
 - baseline run `20260416_170652` 因 `mid_weekly_files=[]` 而全员 `mid_weekly_feature_count=0`；这是 A/B 对照成立的前提。
+
+---
+
+## 12. T3.3\* Ablation 执行细则
+
+> 本节是 §8 新增 6 个 T3.3\* 子任务的可复现手册。每个子任务都有**步骤 / 验收 / 停下条件**，按 §0 bootstrap 循环逐条完成。
+
+### 12.0 A/B 现状简述（T4.3 结论）
+
+- `candidate = 20260422_154414`（mid_weekly 全开）vs `baseline = 20260416_170652`（无 mid_weekly）：
+  - **中位数 ΔSharpe = +0.098**（>0，整体弱正向）。
+  - **退步占比 36.0%**（9/25），超过 §7 的 33.3% 红线 → 必须先 ablation。
+  - **9 个回归品种**：FB (-2.63) / FU (-1.90) / Y (-0.74) / B (-0.53) / SN (-0.40) / RU (-0.34) / BB (-0.23) / JD (-0.19) / M (-0.04)。
+- 先验判断（§6）：`MID_*_AVAILABLE` 哑变量在 top-20 全员 0 gain 占比，大概率是"关掉更好"——但必须用全 importance 口径确认（T3.3\*-a），然后跑 ablation 验证（T3.3\*-b 至 -d）。
+
+### 12.1 T3.3\*-a：全 feature_importance gain 口径
+
+**目标**：证伪"AVAILABLE 在 top-20 外有 gain"的可能性，并同时量化 derived / level / AVAILABLE 三类列的 gain 占比。
+
+**步骤**：
+1. 扩展 `scripts/audit_mid_weekly_importance.py`：新增 `--gain-breakdown` 模式。
+2. 输入：`--run results/runs/20260422_154414`。
+3. 遍历每个 success 品种的 `training_summary.json`，读 `regimes.{low_vol,high_vol}.metrics.top_features`（当前已是 top-20）**与** `regimes.{low_vol,high_vol}.metrics.feature_importance_all`（如字段不存在，脚本需提示"需要在 `pipeline/modeling.py` 里把 full importance 也 dump 出来"——这是阻塞项，改动受 §10.1 限制，**不得擅自改 modeling.py**，必须触发 §9 新决策点 Q3）。
+4. 输出 `results/comparison/midweekly_gain_breakdown.{json,md}`：
+   - 每品种每 regime：`{level_gain_share, derived_gain_share, available_gain_share, other_gain_share}`。
+   - 汇总：9 个回归品种的 AVAILABLE gain 占比分布（中位数 / p90 / max）。
+
+**验收** (`results/comparison/_audit/T3_3star_a_check.txt`)：
+```bash
+test -f results/comparison/midweekly_gain_breakdown.json
+python -c "
+import json
+d = json.loads(open('results/comparison/midweekly_gain_breakdown.json').read())
+regressed = ['FB','FU','Y','B','SN','RU','BB','JD','M']
+shares = [d[pid][r]['available_gain_share'] for pid in regressed for r in ('low_vol','high_vol') if pid in d and r in d[pid]]
+print('avail_gain_share on regressed:', sorted(shares))
+print('median:', sorted(shares)[len(shares)//2])
+assert len(shares) >= 10, 'coverage too sparse'
+"
+```
+
+**停下条件**：
+- full `feature_importance_all` 字段不存在 → 停，触发 §9 Q3（"是否允许扩展 modeling.py 以落 full importance？"）。
+
+### 12.2 T3.3\*-b：Ablation-A 新 batch
+
+**目标**：跑一次 `available_dummy=false` 的 batch，作为"关 AVAILABLE"的实证对照。
+
+**前置检查**：
+```bash
+df -h /Users/zhouzian/Desktop | awk 'NR==2 { if ($4+0 < 5) exit 1 }'   # 要求 ≥5 GiB 可用
+git status --porcelain | grep -v "^??" | wc -l   # 要求工作树干净（0）
+```
+
+**步骤**：
+1. 修改 `config.yaml`：`mid_weekly.available_dummy: true` → `false`。
+2. commit：`midweekly: T3.3*-b disable available_dummy for ablation`。
+3. 跑：`python pipeline/train_products.py --all --force-rebuild` —— 必须带 `--force-rebuild`（§11.9：MID config 不触发 cache 失效）。
+4. 记录新 run_id 到 §8 表（格式与 T4.2 一致）。
+5. 验证 `run_summary.csv`：25 个 success 品种的 `mid_weekly_feature_count` 应比 candidate 减少约 10%（AVAILABLE 每指标 1 列）。
+
+**验收** (`results/comparison/_audit/T3_3star_b_check.txt`)：
+```bash
+test -f results/runs/<new_run_id>/run_summary.csv
+python -c "
+import pandas as pd
+c = pd.read_csv('results/runs/20260422_154414/run_summary.csv').query('status==\"success\"').set_index('product_id')['mid_weekly_feature_count']
+a = pd.read_csv('results/runs/<new_run_id>/run_summary.csv').query('status==\"success\"').set_index('product_id')['mid_weekly_feature_count']
+diff = (c - a).loc[c.index.intersection(a.index)]
+print('feature_count drop per product:', diff.describe())
+assert (diff >= 0).all(), 'feature count must not grow when disabling AVAILABLE'
+assert set(c.index) == set(a.index), 'success set must match candidate'
+"
+```
+
+**停下条件**：
+- 磁盘 <5 GiB → 停，要求用户清理 `results/cache/` 或旧 run。
+- 新 run 的 failed 集合超过 candidate 的 failed 集合 → 停，要求人工介入（可能是 `available_dummy=false` 下游触发了新代码路径）。
+- `feature_count` 差值 ≤0 → 停，说明 config 没生效（可能被 cache 污染）。
+
+### 12.3 T3.3\*-c：Ablation-A 双向对比
+
+**目标**：既要看"关 AVAILABLE 有没有扭转对 baseline 的回归"，又要看"关 AVAILABLE 对 candidate 到底改变了什么"。
+
+**步骤**：
+1. `python scripts/compare_runs.py --baseline 20260416_170652 --candidate <ablation_run_id> --output results/comparison/ablation_noavail_vs_baseline`
+2. `python scripts/compare_runs.py --baseline 20260422_154414 --candidate <ablation_run_id> --output results/comparison/ablation_noavail_vs_candidate`
+3. 两份报告都必须产出 `.csv/.md/.png` 三件套。
+
+**验收** (`results/comparison/_audit/T3_3star_c_check.txt`)：
+```bash
+for stem in ablation_noavail_vs_baseline ablation_noavail_vs_candidate; do
+  for ext in csv md png; do
+    test -f results/comparison/${stem}.${ext} || { echo "missing ${stem}.${ext}"; exit 1; }
+  done
+done
+```
+
+**停下条件**：
+- PNG 生成失败（磁盘近满 / matplotlib 炸）→ 停，让用户核查磁盘。
+- `ablation_noavail_vs_candidate` 的中位数 ΔSharpe < -0.3 → 关 AVAILABLE 反而整体变差了，停下问用户（意味着哑变量其实有用，§6 的理论分支生效）。
+
+### 12.4 T3.3\*-d：裁决 + §9 Q2 回填
+
+**裁决规则**（§6 + T3.3\*-a 数据）：
+- **关**：若 `available_gain_share` 中位数（9 个回归品种聚合）< 5% **且** `ablation_noavail_vs_candidate` 的中位数 |ΔSharpe| < 0.1（或为正）。
+- **留**：任一条件不满足。
+
+**步骤**：
+1. 按上表决定 `keep` / `drop`。
+2. 更新 §9 Q2 行：`decided (keep|drop)` + 日期 + 理由一句话。
+3. 若决定 `drop`，保留 `config.yaml::mid_weekly.available_dummy: false`（已在 T3.3\*-b 设好）；若 `keep`，还原为 `true`。
+4. Commit：`midweekly: T3.3*-d verdict — available_dummy=<keep|drop>`。
+
+**停下条件**：
+- `ablation_noavail_vs_baseline` 的退步品种数**仍 ≥1/3**（≥9）→ 不能直接 `drop` 收工，必须进 T3.3\*-e（derived ablation），在备注里写明。
+
+### 12.5 T3.3\*-e（条件）：Ablation-B `derived.enabled=false`
+
+**触发条件**：T3.3\*-d 后 `ablation_noavail_vs_baseline` 仍 ≥9 个品种回归。
+
+**步骤**：
+1. `config.yaml`：`mid_weekly.derived.enabled: false`（AVAILABLE 状态依 T3.3\*-d 的决定）。
+2. commit → 跑新 batch（同 T3.3\*-b 的 checklist）。
+3. 跑两份对比：`ablation_nopref_vs_baseline` / `ablation_nopref_vs_noavail`。
+4. 若 derived 关掉后回归仍 ≥1/3，**停**并触发 §9 Q4（"是否需要 per-MID IC 过滤"）。
+
+### 12.6 T3.3\*-f：最终裁决汇总
+
+**产出** `results/comparison/midweekly_verdict.md`：
+1. 三（或四）个 run 的 config diff 表格。
+2. 25 个品种 × 三个 run 的 Sharpe 矩阵（baseline / candidate / ablation-A / 可选 ablation-B）。
+3. 9 个回归品种的最终归属：**已修复** / **仍回归但可接受** / **建议移除该品种的 MID 列**（触发 §9 Q5）。
+4. 对 `config.yaml::mid_weekly` 的最终推荐（available_dummy / derived.enabled / missing_ratio_relax / ffill_max_bars 四个字段的最终值，带一句话理由）。
+
+**验收**：文档存在、表格齐全、推荐落到具体字段值。
+
+**最终 commit**：`midweekly: T3.3* complete — verdict + config recommendation`。
+
+---
+
+## 13. 不变量补充（T3.3\* 阶段）
+
+1. **保留所有 run 产物**：`20260416_170652` / `20260422_154414` / 任何 ablation run 都不得删除，互为对照。
+2. **ablation run 必须独立 run_id**：禁止 `--resume-run` 复用已有 run_id（会污染 manifest）。
+3. **`--force-rebuild` 在任何 MID config 改动后都是强制项**，违者视为实验无效。
+4. **磁盘安全闸**：任何 batch 启动前，working tree 必须干净 + 磁盘 ≥5 GiB。
