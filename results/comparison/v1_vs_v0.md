@@ -1,7 +1,7 @@
-# Mid-Weekly A/B Report — 20260416_170652 vs 20260422_154414
+# Mid-Weekly A/B Report — micro_result vs mid_v1_result
 
-- Baseline run: `results/runs/20260416_170652`（`mid_weekly_feature_count = 0`）
-- Candidate run: `results/runs/20260422_154414`（`mid_weekly_feature_count > 0`）
+- Baseline run: `results/runs/micro_result`（`mid_weekly_feature_count = 0`）
+- Candidate run: `results/runs/mid_v1_result`（`mid_weekly_feature_count > 0`）
 - 比较口径：各品种 test 集 net 指标（`backtest_summary.json → test_backtest`）
 
 ## 摘要

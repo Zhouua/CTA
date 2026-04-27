@@ -48,7 +48,7 @@ mid_weekly:
     enabled: true
     rolling_windows: [4, 13, 52]   # weeks
     transforms: [ret, zscore, pct_rank]
-  level_keep: true                 # keep raw MID_* level columns alongside derivatives
+  level_keep: false                # G1: drop raw MID_* level columns; keep derived + AVAILABLE only
   missing_ratio_relax: 0.65        # applied only to MID_* cols, replaces default 0.35
   # § 15 P2 option A — frequency-aware quality filter applied before derivation/merge.
   # Per xlsx column: eff_ratio = non_null_ratio / expected_ratio(frequency).
