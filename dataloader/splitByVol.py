@@ -161,11 +161,11 @@ def split_by_vol(
             day_end=("TDATE", "max"),
         )
     )
-    # 计算日度波动率
-    daily_close["daily_ret"] = np.log(
-        daily_close["CLOSE"] / daily_close["CLOSE"].shift(1)
-    )
-    daily_close["daily_vol_20"] = daily_close["daily_ret"].rolling(window).std()
+    # 计算日度波动率（仅用于 regime 分类）
+    _raw_ret = np.log(daily_close["CLOSE"] / daily_close["CLOSE"].shift(1))
+    daily_close["daily_vol_20"] = _raw_ret.rolling(window).std()
+    # ret_1d = 前一日全程收益，日内常数，无前视
+    daily_close["ret_1d"] = _raw_ret.shift(1)
 
     train_daily_vol = daily_close.loc[
         daily_close["DATA_SPLIT"] == "train", "daily_vol_20"
@@ -221,9 +221,9 @@ def split_by_vol(
         daily_close[
             [
                 "TRADE_DATE",
-                "daily_ret",
                 "daily_vol_20",
                 "DAILY_VOL_LABEL",
+                "ret_1d",
             ]
         ],
         on="TRADE_DATE",

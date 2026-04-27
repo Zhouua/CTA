@@ -814,6 +814,7 @@ class FactorDatasetBuilder:
             low.shift(1).rolling(med_w, min_periods=max(3, med_w // 3)).min() + eps
         ) - 1.0
 
+
         minute_of_day = engineered[self.timestamp_col].dt.hour * 60 + engineered[self.timestamp_col].dt.minute
         engineered["ENG_TOD_SIN"] = np.sin(2.0 * np.pi * minute_of_day / 1440.0)
         engineered["ENG_TOD_COS"] = np.cos(2.0 * np.pi * minute_of_day / 1440.0)
@@ -1026,10 +1027,9 @@ class FactorDatasetBuilder:
         merged_data["DATA_SPLIT"] = merged_data["DATA_SPLIT"].replace({"valid": "val"})
 
         extra_feature_cols = []
-        if "daily_vol_20" in merged_data.columns:
-            extra_feature_cols.append("daily_vol_20")
-        if "daily_ret" in merged_data.columns:
-            extra_feature_cols.append("daily_ret")
+        for _extra in ["daily_vol_20", "daily_ret", "ret_1d", "ret_3d", "ret_5d", "ret_10d"]:
+            if _extra in merged_data.columns:
+                extra_feature_cols.append(_extra)
 
         candidate_cols = list(dict.fromkeys(factor_cols + engineered_cols + extra_feature_cols))
         candidate_cols = [col for col in candidate_cols if col in merged_data.columns]
