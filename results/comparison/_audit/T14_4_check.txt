@@ -1,5 +1,0 @@
-### T14.4 run log (plan § 14)
-Run at: 2026-04-23T08:51:52Z
-
-T14.4 written to docs/midweekly_regression_diagnosis.md
-EXIT=0
