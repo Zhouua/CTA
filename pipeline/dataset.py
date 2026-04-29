@@ -210,6 +210,7 @@ def build_data_settings(
         "cache_merged_dataset": bool(data_cfg.get("cache_merged_dataset", True)),
         "force_rebuild_cache": bool(data_cfg.get("force_rebuild_cache", False)),
         "use_engineered_features": bool(data_cfg.get("use_engineered_features", True)),
+        "use_synthetic_factors": bool(data_cfg.get("use_synthetic_factors", True)),
         "engineered_windows": dict(data_cfg.get("engineered_windows", {})),
         "train_ratio": float(data_cfg.get("train_ratio", 0.7)),
         "valid_ratio": float(data_cfg.get("valid_ratio", 0.15)),
@@ -820,6 +821,192 @@ class FactorDatasetBuilder:
         engineered["ENG_TOD_COS"] = np.cos(2.0 * np.pi * minute_of_day / 1440.0)
         engineered["ENG_WEEKDAY"] = engineered[self.timestamp_col].dt.dayofweek.astype("float32")
         engineered["ENG_IS_DAY_SESSION"] = engineered[self.timestamp_col].dt.hour.between(9, 15).astype("float32")
+
+        # Long-window momentum (120 / 240 / 480 bars)
+        for _w in [120, 240, 480]:
+            _mp = max(3, _w // 3)
+            _ma_w = close.rolling(_w, min_periods=_mp).mean()
+            engineered[f"ENG_RET_{_w}"] = close.pct_change(_w)
+            engineered[f"ENG_RV_{_w}"] = ret1.rolling(_w, min_periods=_mp).std()
+            engineered[f"ENG_PRICE_TO_MA_{_w}"] = close / (_ma_w + eps) - 1.0
+            engineered[f"ENG_VOLUME_RATIO_{_w}"] = volume / (volume.rolling(_w, min_periods=_mp).mean() + eps)
+
+        # Cross-window momentum consistency: mean sign across [5,20,60,120,240]-bar returns
+        _cons_windows = [w for w in [5, 20, 60, 120, 240] if f"ENG_RET_{w}" in engineered.columns]
+        if len(_cons_windows) >= 2:
+            _signs = pd.concat([np.sign(engineered[f"ENG_RET_{w}"]) for w in _cons_windows], axis=1)
+            engineered["ENG_MOMENTUM_CONSISTENCY"] = _signs.mean(axis=1)
+
+        # Overnight gap (non-zero only on first bar of each day) and intraday cumulative return
+        _tdate = engineered[self.trade_date_col]
+        _daily_last_close = engineered.groupby(_tdate)["CLOSE"].last().shift(1)
+        _prev_close_mapped = _tdate.map(_daily_last_close)
+        _is_first_bar = engineered.groupby(_tdate).cumcount() == 0
+        _day_open = engineered.groupby(_tdate)["OPEN"].transform("first")
+        engineered["ENG_OVERNIGHT_GAP"] = np.where(
+            _is_first_bar,
+            open_ / (_prev_close_mapped + eps) - 1.0,
+            0.0,
+        )
+        engineered["ENG_OVERNIGHT_GAP_ABS"] = engineered["ENG_OVERNIGHT_GAP"].abs()
+        engineered["ENG_INTRADAY_RET"] = (close - _day_open) / (_day_open + eps)
+
+        # Rolling VWAP deviation: amount/volume sum approximates VWAP
+        for _w in [20, 60]:
+            _mp = max(3, _w // 3)
+            _rvwap = amount.rolling(_w, min_periods=_mp).sum() / (volume.rolling(_w, min_periods=_mp).sum() + eps)
+            engineered[f"ENG_VWAP_DEV_{_w}"] = close / (_rvwap + eps) - 1.0
+            _lo_w = low.rolling(_w, min_periods=_mp).min()
+            _hi_w = high.rolling(_w, min_periods=_mp).max()
+            engineered[f"ENG_PRICE_POSITION_{_w}"] = (close - _lo_w) / (_hi_w - _lo_w + eps)
+
+        # Close z-score over medium/long windows
+        for _w in [60, 120]:
+            _mp = max(3, _w // 3)
+            _rm = close.rolling(_w, min_periods=_mp).mean()
+            _rs = close.rolling(_w, min_periods=_mp).std()
+            engineered[f"ENG_CLOSE_ZSCORE_{_w}"] = (close - _rm) / (_rs + eps)
+
+        # Signed volume accumulation (volume-price trend)
+        _ret_sign = np.sign(ret1)
+        for _w in [10, 30, 60]:
+            _mp = max(3, _w // 3)
+            engineered[f"ENG_VOLUME_PRICE_TREND_{_w}"] = (
+                (_ret_sign * volume).rolling(_w, min_periods=_mp).sum()
+                / (volume.rolling(_w, min_periods=_mp).sum() + eps)
+            )
+
+        # Buying pressure: close-to-high fraction weighted by volume
+        for _w in [5, 20]:
+            _mp = max(3, _w // 3)
+            _bp = (close - low) / (high_low_range + eps) * volume
+            engineered[f"ENG_BUYING_PRESSURE_{_w}"] = (
+                _bp.rolling(_w, min_periods=_mp).sum()
+                / (volume.rolling(_w, min_periods=_mp).sum() + eps)
+            )
+
+        # Parkinson volatility (high-low estimator)
+        _log_hl_sq = np.log(high / (low + eps)) ** 2
+        for _w in [20, 60]:
+            _mp = max(3, _w // 3)
+            engineered[f"ENG_PARKINSON_VOL_{_w}"] = np.sqrt(
+                _log_hl_sq.rolling(_w, min_periods=_mp).mean() / (4.0 * np.log(2))
+            ) * np.sqrt(240)
+
+        # Volatility regime indicators (use runtime STD factors if available)
+        if "STD20" in engineered.columns and "STD60" in engineered.columns:
+            engineered["ENG_VOL_TREND"] = engineered["STD20"] / (engineered["STD60"] + eps)
+        if "STD20" in engineered.columns:
+            _std20 = engineered["STD20"].astype("float64")
+            engineered["ENG_VOL_ZSCORE"] = (
+                (_std20 - _std20.rolling(120, min_periods=40).mean())
+                / (_std20.rolling(120, min_periods=40).std() + eps)
+            )
+
+        # OI-based factors (POSITION = open interest / 持仓量)
+        for _w in [5, 20]:
+            _mp = max(3, _w // 3)
+            _oi_chg = position.pct_change(_w)
+            _ret_w = close.pct_change(_w)
+            engineered[f"ENG_OI_CHANGE_{_w}"] = _oi_chg
+            engineered[f"ENG_OI_PRICE_CONFIRM_{_w}"] = (np.sign(_oi_chg) == np.sign(_ret_w)).astype("float32")
+            engineered[f"ENG_OI_DIVERGE_{_w}"] = (
+                ((_oi_chg > 0) & (_ret_w < 0)) | ((_oi_chg < 0) & (_ret_w > 0))
+            ).astype("float32")
+
+        # ── synthetic factors (interactions / ratios / accelerations) ────────
+        # S1: vol-normalized momentum (Sharpe-like)
+        for _w in [5, 20, 60, 120]:
+            _mp = max(3, _w // 3)
+            _ret_w = close.pct_change(_w)
+            _rv_w = ret1.rolling(_w, min_periods=_mp).std()
+            engineered[f"ENG_SHARPE_{_w}"] = _ret_w / (_rv_w * np.sqrt(_w) + eps)
+
+        # S2: momentum acceleration
+        for _w in [20, 60]:
+            _ret_now = close.pct_change(_w)
+            _ret_lag = close.pct_change(_w).shift(_w)
+            engineered[f"ENG_MOM_ACCEL_{_w}"] = _ret_now - _ret_lag
+
+        # S3: trend × volatility regime interaction
+        if "STD20" in engineered.columns and "STD60" in engineered.columns:
+            _vol_regime = engineered["STD20"].astype("float64") / (engineered["STD60"].astype("float64") + eps)
+            for _w in [20, 60]:
+                _ret_w = close.pct_change(_w)
+                engineered[f"ENG_TREND_X_VOLREG_{_w}"] = _ret_w * _vol_regime
+
+        # S4: range expansion
+        for _w in [20, 60]:
+            _mp = max(3, _w // 3)
+            _hl = high_low_range
+            _hl_ma = _hl.rolling(_w, min_periods=_mp).mean()
+            engineered[f"ENG_RANGE_EXPAND_{_w}"] = _hl / (_hl_ma + eps) - 1.0
+
+        # S5: volume-price divergence
+        for _w in [20, 60]:
+            _mp = max(3, _w // 3)
+            _vol_z = (volume - volume.rolling(_w, min_periods=_mp).mean()) / (volume.rolling(_w, min_periods=_mp).std() + eps)
+            _ret_z = close.pct_change(_w) / (ret1.rolling(_w, min_periods=_mp).std() * np.sqrt(_w) + eps)
+            engineered[f"ENG_VOL_PRICE_DIVERGE_{_w}"] = _vol_z.abs() - _ret_z.abs()
+
+        # S6: tick-direction accumulation
+        _tick_dir = np.sign(close - open_)
+        for _w in [20, 60]:
+            _mp = max(3, _w // 3)
+            engineered[f"ENG_TICK_DIR_VW_{_w}"] = (
+                (_tick_dir * volume).rolling(_w, min_periods=_mp).sum()
+                / (volume.rolling(_w, min_periods=_mp).sum() + eps)
+            )
+
+        # S7: efficiency ratio (Kaufman)
+        for _w in [20, 60]:
+            _mp = max(3, _w // 3)
+            _displacement = (close - close.shift(_w)).abs()
+            _path = ret1.abs().rolling(_w, min_periods=_mp).sum() * close.shift(_w).abs()
+            engineered[f"ENG_EFFICIENCY_{_w}"] = _displacement / (_path + eps)
+
+        # S8: cross-window divergence
+        if all(f"ENG_RET_{w}" in engineered.columns for w in [5, 60]):
+            engineered["ENG_DIVERGE_5_60"] = np.sign(engineered["ENG_RET_5"]) * np.sign(engineered["ENG_RET_60"])
+        if all(f"ENG_RET_{w}" in engineered.columns for w in [20, 240]):
+            engineered["ENG_DIVERGE_20_240"] = np.sign(engineered["ENG_RET_20"]) * np.sign(engineered["ENG_RET_240"])
+
+        # S9: intraday extreme positioning — distance from day's high/low normalized by ATR
+        _day_high = engineered.groupby(_tdate)["HIGH"].cummax()
+        _day_low = engineered.groupby(_tdate)["LOW"].cummin()
+        _atr_proxy = true_range.rolling(20, min_periods=6).mean() + eps
+        engineered["ENG_DIST_DAY_HIGH"] = (close - _day_high) / _atr_proxy
+        engineered["ENG_DIST_DAY_LOW"] = (close - _day_low) / _atr_proxy
+        engineered["ENG_DAY_RANGE_POS"] = (close - _day_low) / (_day_high - _day_low + eps)
+
+        # S10: signed return × intraday position — agreement of direction & location
+        if "ENG_INTRADAY_RET" in engineered.columns:
+            engineered["ENG_INTRADAY_RET_X_RET20"] = engineered["ENG_INTRADAY_RET"] * close.pct_change(20)
+
+        # Daily-state features broadcast to 1-min bars (current-day values, no lag).
+        _daily_close = engineered.groupby(_tdate)["CLOSE"].last()
+        _daily_log_ret = np.log(_daily_close / _daily_close.shift(1))
+        _daily_vol_20 = _daily_log_ret.rolling(20, min_periods=10).std()
+        engineered["daily_ret"] = _tdate.map(_daily_log_ret).astype("float32")
+        engineered["daily_vol_20"] = _tdate.map(_daily_vol_20).astype("float32")
+
+        # Ablation: drop synthetic ENG_* (anything beyond the original 35) when disabled
+        if not self.settings["use_synthetic_factors"]:
+            _ORIGINAL_ENG = {
+                "ENG_RET_1","ENG_LOG_RET_1","ENG_RANGE_1","ENG_BODY_1","ENG_BODY_ABS",
+                "ENG_CLOSE_TO_RANGE","ENG_INTRABAR_VOL",
+                "ENG_RET_5","ENG_RET_20","ENG_RET_60",
+                "ENG_RV_5","ENG_RV_20","ENG_RV_60",
+                "ENG_PRICE_TO_MA_5","ENG_PRICE_TO_MA_20","ENG_PRICE_TO_MA_60",
+                "ENG_VOLUME_RATIO_5","ENG_VOLUME_RATIO_20","ENG_VOLUME_RATIO_60",
+                "ENG_POSITION_RATIO_5","ENG_POSITION_RATIO_20","ENG_POSITION_RATIO_60",
+                "ENG_AMOUNT_RATIO_5","ENG_AMOUNT_RATIO_20","ENG_AMOUNT_RATIO_60",
+                "ENG_ATR_20","ENG_ATR_60","ENG_VOL_RATIO_5_20","ENG_RET_DIFF_5_20",
+                "ENG_PRICE_BREAKOUT_20","ENG_PRICE_BREAKDOWN_20",
+                "ENG_TOD_SIN","ENG_TOD_COS","ENG_WEEKDAY","ENG_IS_DAY_SESSION",
+            }
+            _drop = [c for c in engineered.columns if c.startswith("ENG_") and c not in _ORIGINAL_ENG]
+            engineered = engineered.drop(columns=_drop)
 
         engineered_cols = [col for col in engineered.columns if col.startswith("ENG_")]
         engineered[engineered_cols] = engineered[engineered_cols].astype("float32")

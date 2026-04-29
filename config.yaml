@@ -1,5 +1,5 @@
 paths:
-  raw_data: data/RBZL.SHF.csv
+  raw_data: data/分产品1min主连/RBZL.SHF.csv
   product_data_dir: data/分产品1min主连
   product_registry: data/product_registry.json
   factor_dir: data/factors
@@ -34,6 +34,7 @@ data:
   cache_merged_dataset: true
   force_rebuild_cache: false
   use_engineered_features: true
+  use_synthetic_factors: true
   use_mid_weekly: true
   mid_alignment: asof_forward_fill
   engineered_windows:
@@ -80,6 +81,12 @@ factors:
       - volume
       - correlation
     cache_generated_features: true
+  feature_selection:
+    enabled: true
+    method: top_n
+    min_abs_ic: 0.005
+    top_n: 160
+    protect_prefixes: []
 
 vol_split:
   window: 20
@@ -95,7 +102,7 @@ model:
   target_vol_window: 20
   target_vol_epsilon: 1.0e-8
   target_vol_floor_quantile: 0.05
-  num_boost_round: 400
+  num_boost_round: 600
   early_stopping_rounds: 50
   feature_importance_top_n: 20
   persist_models: true
@@ -123,10 +130,10 @@ signal:
   signal_col: pred_return
   threshold_mode: quantile
   entry_quantile: 0.88
-  exit_quantile: 0.45
+  exit_quantile: 0.4
   confirmation_bars: 2
   min_hold_bars: 4
-  cooldown_bars: 2
+  cooldown_bars: 1
   allow_direct_flip: false
   flip_to_flat_first: true
   enforce_cost_filter: true

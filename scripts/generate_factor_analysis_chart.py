@@ -1,11 +1,12 @@
 """
-Generate three focused factor-analysis charts for report section 1.3.
-Pre-model perspective: all metrics derived from training-set raw data only.
+Generate four factor-analysis charts for report sections 1.3 and 1.6.
+Charts 1-3 are pre-model (training-set IC); chart 4 is post-training (LightGBM Gain).
 
 Charts:
-  factor_group_ic.png        — group-level mean |IC| on training set
-  factor_top20_ic.png        — top-20 features by |IC| on training set
-  factor_ic_monthly_train.png — monthly mean |IC| (across all features) on training set
+  factor_group_ic.png              — group-level mean |IC| on training set (3 groups)
+  factor_top20_ic.png              — top-20 features by |IC| on training set
+  factor_ic_monthly_train.png      — monthly mean |IC| (across all features) on training set
+  factor_top20_model_importance.png — LightGBM low_vol model top-20 features by Gain (post-training)
 
 Outputs to results/runs/micro_result/RB/
 """
@@ -31,6 +32,7 @@ import matplotlib.ticker as mticker
 OUT_DIR   = PROJECT_ROOT / "results" / "runs" / "micro_result" / "RB"
 MODEL_DIR = PROJECT_ROOT / "results" / "models"
 CACHE_DIR = PROJECT_ROOT / "results" / "cache" / "products" / "RB"
+MERGED_CACHE = PROJECT_ROOT / "results" / "cache" / "merged_features.parquet"
 
 TRAIN_END = "2024-05-01"  # first 70% of 75 months ≈ 52 months (2020-01 to 2024-04)
 
@@ -59,63 +61,34 @@ FONT_AXIS  = dict(fontsize=9, color="#333333")
 
 
 # ── factor group definitions ──────────────────────────────────────────
+# 35 originally-engineered ENG_* features (pre-synthetic-expansion). Anything
+# that starts with ENG_ but is not in this set is classified as 合成因子.
+ORIGINAL_ENG_FEATURES: frozenset[str] = frozenset({
+    "ENG_RET_1", "ENG_LOG_RET_1", "ENG_RANGE_1", "ENG_BODY_1", "ENG_BODY_ABS",
+    "ENG_CLOSE_TO_RANGE", "ENG_INTRABAR_VOL",
+    "ENG_RET_5", "ENG_RET_20", "ENG_RET_60",
+    "ENG_RV_5", "ENG_RV_20", "ENG_RV_60",
+    "ENG_PRICE_TO_MA_5", "ENG_PRICE_TO_MA_20", "ENG_PRICE_TO_MA_60",
+    "ENG_VOLUME_RATIO_5", "ENG_VOLUME_RATIO_20", "ENG_VOLUME_RATIO_60",
+    "ENG_POSITION_RATIO_5", "ENG_POSITION_RATIO_20", "ENG_POSITION_RATIO_60",
+    "ENG_AMOUNT_RATIO_5", "ENG_AMOUNT_RATIO_20", "ENG_AMOUNT_RATIO_60",
+    "ENG_ATR_20", "ENG_ATR_60",
+    "ENG_VOL_RATIO_5_20", "ENG_RET_DIFF_5_20",
+    "ENG_PRICE_BREAKOUT_20", "ENG_PRICE_BREAKDOWN_20",
+    "ENG_TOD_SIN", "ENG_TOD_COS", "ENG_WEEKDAY", "ENG_IS_DAY_SESSION",
+})
+
 GROUPS: dict[str, dict] = {
-    "日度状态\n(2)": {
-        "prefixes": ["daily_ret", "daily_vol"],
-        "exact": ["daily_ret", "daily_vol_20"],
-        "color": CICC_BLUE,
-    },
-    "工程化特征\n(35)": {
-        "prefixes": ["ENG_"],
-        "exact": [],
-        "color": CICC_RED,
-    },
-    "量价相关性\n(10)": {
-        "prefixes": ["CORR", "CORD"],
-        "exact": [],
-        "color": CICC_ORANGE,
-    },
-    "成交量\n(35)": {
-        "prefixes": ["VMA", "VSTD", "VSUMP", "VSUMN", "VSUMD", "WVMA", "VOLUME"],
-        "exact": [],
-        "color": CICC_TEAL,
-    },
-    "方向动量\n(30)": {
-        "prefixes": ["CNTP", "CNTN", "CNTD", "SUMP", "SUMN", "SUMD"],
-        "exact": [],
-        "color": CICC_GREEN,
-    },
-    "波动率\n(35)": {
-        "prefixes": ["STD", "RSV", "QTLU", "QTLD", "IMAX", "IMIN", "IMXD"],
-        "exact": [],
-        "color": CICC_PURPLE,
-    },
-    "趋势\n(20)": {
-        "prefixes": ["MA", "ROC", "MAX", "MIN"],
-        "exact": [],
-        "color": "#E67E22",
-    },
-    "K线形态\n(9)": {
-        "prefixes": ["KLEN", "KUP", "KLOW", "KMID", "KSFT"],
-        "exact": [],
-        "color": "#17A589",
-    },
-    "价格滞后\n(15)": {
-        "prefixes": ["OPEN", "HIGH", "LOW"],
-        "exact": [],
-        "color": CICC_GRAY,
-    },
+    "量价因子": {"color": CICC_BLUE},
+    "工程化特征": {"color": CICC_RED},
+    "合成因子":   {"color": CICC_ORANGE},
 }
 
 
 def assign_group(feat: str) -> str:
-    for gname, gdef in GROUPS.items():
-        if feat in gdef["exact"]:
-            return gname
-        for pfx in gdef["prefixes"]:
-            if feat.startswith(pfx):
-                return gname
-    return "其他"
+    if feat.startswith("ENG_"):
+        return "工程化特征" if feat in ORIGINAL_ENG_FEATURES else "合成因子"
+    return "量价因子"
 
 
 def _source(ax, y=-0.12):
@@ -134,19 +107,8 @@ def _load_training_ic() -> dict[str, float]:
     with open(MODEL_DIR / "low_vol" / "feature_importance.json") as f:
         model_feats = [d["feature"] for d in json.load(f)]
 
-    parquet = sorted(CACHE_DIR.glob("*.parquet"))[0]
-    df = pd.read_parquet(parquet)
+    df = pd.read_parquet(MERGED_CACHE)
     df["TDATE"] = pd.to_datetime(df["TDATE"])
-
-    # compute daily_ret and daily_vol_20 (not in cache, but in model)
-    # daily_ret uses yesterday's return (shifted 1 day) to avoid look-ahead bias
-    df["_date"] = df["TDATE"].dt.date.astype(str)
-    daily_close = df.groupby("_date")["CLOSE"].last()
-    _raw_ret = np.log(daily_close / daily_close.shift(1))
-    daily_ret_fixed = _raw_ret.shift(1)   # yesterday's return — no look-ahead
-    daily_vol = _raw_ret.rolling(20, min_periods=10).std()
-    df["daily_ret"]    = df["_date"].map(daily_ret_fixed)
-    df["daily_vol_20"] = df["_date"].map(daily_vol)
 
     train = df[df["TDATE"] < TRAIN_END].copy()
     y = train["future_return"].dropna()
@@ -170,15 +132,8 @@ def _compute_monthly_ic(ic_dict: dict[str, float]) -> tuple[list[str], np.ndarra
     For each training month, compute mean |IC| across all features.
     Returns (month_labels, mean_abs_ic_array).
     """
-    parquet = sorted(CACHE_DIR.glob("*.parquet"))[0]
-    df = pd.read_parquet(parquet)
+    df = pd.read_parquet(MERGED_CACHE)
     df["TDATE"] = pd.to_datetime(df["TDATE"])
-
-    df["_date"] = df["TDATE"].dt.date.astype(str)
-    daily_close = df.groupby("_date")["CLOSE"].last()
-    _raw_ret = np.log(daily_close / daily_close.shift(1))
-    df["daily_ret"]    = df["_date"].map(_raw_ret.shift(1))   # yesterday — no look-ahead
-    df["daily_vol_20"] = df["_date"].map(_raw_ret.rolling(20, min_periods=10).std())
 
     train = df[df["TDATE"] < TRAIN_END].copy()
     train["month"] = train["TDATE"].dt.to_period("M")
@@ -238,7 +193,7 @@ def plot_group_ic(ic_dict: dict[str, float]):
     ax.set_xlim(0, max(vals) * 1.28)
     ax.set_title(
         "因子组别平均信息系数|IC|（训练集，进入模型前）\n"
-        "（K线形态与工程化特征单因子预测力最强；成交量与量价相关性贡献相对有限）",
+        "（三类因子——量价因子、工程化特征、合成因子——在5分钟未来收益上的单因子线性预测能力对比）",
         **FONT_TITLE, pad=8,
     )
     ax.spines[["top", "right"]].set_visible(False)
@@ -275,7 +230,7 @@ def plot_top20_ic(ic_dict: dict[str, float]):
     ax.set_xlabel("|IC|（训练集，2020-01至2024-04）", **FONT_AXIS)
     ax.set_title(
         "训练集Top 20单因子信息系数|IC|（进入模型前，Pearson相关系数）\n"
-        "（ENG_CLOSE_TO_RANGE与K线形态位居前列；所有特征|IC|集中于0.01–0.04，无异常高IC特征）",
+        "（按因子归属着色：量价因子 / 工程化特征 / 合成因子；同日daily_ret当日值与未来5分钟收益线性相关性最强）",
         **FONT_TITLE, pad=8,
     )
     ax.set_xlim(0, max(top_vals) * 1.28)
@@ -367,6 +322,73 @@ def plot_ic_monthly_train(months: list[str], ic_vals: np.ndarray):
     print(f"Saved: {out}")
 
 
+# ── chart 4: LightGBM low_vol model — top 20 by Gain importance ──────
+def plot_top20_model_importance(regime: str = "low_vol"):
+    imp_path = MODEL_DIR / regime / "feature_importance.json"
+    if not imp_path.exists():
+        print(f"[skip] {imp_path} not found — run pipeline/train.py with persist_models=true first.")
+        return
+
+    with open(imp_path) as f:
+        records = json.load(f)
+    df_imp = pd.DataFrame(records)
+    if df_imp.empty or "importance_gain" not in df_imp.columns:
+        print(f"[skip] {imp_path} is empty or malformed.")
+        return
+
+    top20 = df_imp.sort_values("importance_gain", ascending=False).head(20)
+    names      = top20["feature"].tolist()
+    gains      = top20["importance_gain"].tolist()
+    splits     = top20["importance_split"].tolist() if "importance_split" in top20 else [0]*len(names)
+    bar_colors = [GROUPS.get(assign_group(n), {}).get("color", CICC_GRAY) for n in names]
+
+    total_gain = float(df_imp["importance_gain"].sum())
+    top20_share = sum(gains) / total_gain * 100 if total_gain > 0 else 0.0
+
+    fig, ax = plt.subplots(figsize=FIG_SIZE)
+    fig.patch.set_facecolor("white")
+    ax.set_facecolor("white")
+
+    y = np.arange(len(names))
+    ax.barh(y, gains, 0.65, color=bar_colors, alpha=0.88, edgecolor="none")
+
+    for i, (g, sp) in enumerate(zip(gains, splits)):
+        ax.text(g + max(gains) * 0.01, i,
+                f"{int(g):,} (split={int(sp)})",
+                va="center", fontsize=7.5, color="#333333")
+
+    ax.set_yticks(y)
+    ax.set_yticklabels(names, fontsize=8.5)
+    ax.invert_yaxis()
+    ax.set_xlabel("Gain增益（LightGBM特征重要性，越高表示模型越依赖该特征）", **FONT_AXIS)
+    ax.set_title(
+        f"LightGBM低波动域模型Top 20特征Gain重要性（训练后视角）\n"
+        f"（Top 20累计占总Gain的{top20_share:.1f}%；按因子归属着色，daily_ret当日值与日内累计收益类合成因子是模型主要依赖）",
+        **FONT_TITLE, pad=8,
+    )
+    ax.set_xlim(0, max(gains) * 1.30)
+    ax.spines[["top", "right"]].set_visible(False)
+    ax.tick_params(axis="y", labelsize=8.5)
+    ax.tick_params(axis="x", labelsize=8)
+    ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f"{int(x):,}"))
+
+    seen, handles = {}, []
+    for name, color in zip(names, bar_colors):
+        g = assign_group(name)
+        if g not in seen:
+            seen[g] = color
+            handles.append(mpatches.Patch(facecolor=color, alpha=0.88, label=g))
+    ax.legend(handles=handles, fontsize=7.5, loc="lower right",
+              framealpha=0.9, ncol=2)
+    _source(ax)
+
+    fig.tight_layout()
+    out = OUT_DIR / "factor_top20_model_importance.png"
+    fig.savefig(out, dpi=150, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+    print(f"Saved: {out}")
+
+
 if __name__ == "__main__":
     print("Computing training-set IC for all model features ...")
     ic_dict = _load_training_ic()
@@ -382,4 +404,5 @@ if __name__ == "__main__":
     plot_group_ic(ic_dict)
     plot_top20_ic(ic_dict)
     plot_ic_monthly_train(months, monthly_ic)
+    plot_top20_model_importance()
     print("Done.")
