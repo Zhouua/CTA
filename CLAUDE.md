@@ -18,14 +18,17 @@ The README (Chinese) is the most detailed reference for design intent and the me
 ## Common commands
 
 ```bash
-# Single product (uses paths.raw_data, default RBZL.SHF.csv)
-python pipeline/train.py [--config config.yaml] [--force-rebuild]
+# Single product (default RB; product_id resolved from paths.raw_data)
+python pipeline/train_products.py --product RB [--config config.yaml] [--force-rebuild]
 python pipeline/backtest.py [--config config.yaml] [--force-rebuild]
 
 # Batch over every product in data/product_registry.json
 python pipeline/train_products.py --all
 python pipeline/train_products.py --product RB --product CU
 python pipeline/train_products.py --resume-run <run_id>   # only retries non-success entries
+
+# Factor IC × importance audit → updates data/factor_registry.json
+python scripts/audit_factor_ic_importance.py
 
 # Rebuild the registry by scanning data/分产品1min主连/
 python pipeline/build_product_registry.py

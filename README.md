@@ -170,14 +170,14 @@ CTA_vol/
 在代码根目录下执行：
 
 ```bash
-python pipeline/train.py
+python pipeline/train_products.py --product RB
 python pipeline/backtest.py
 ```
 
 如果你改了原始数据或因子，想强制重建融合缓存：
 
 ```bash
-python pipeline/train.py --force-rebuild
+python pipeline/train_products.py --product RB --force-rebuild
 python pipeline/backtest.py --force-rebuild
 ```
 
@@ -185,6 +185,12 @@ python pipeline/backtest.py --force-rebuild
 
 ```bash
 python pipeline/train_products.py --all
+```
+
+因子审计（更新 `data/factor_registry.json` 中每个因子的 IC / importance）：
+
+```bash
+python scripts/audit_factor_ic_importance.py
 ```
 
 批量训练会在终端输出每个品种的开始、成功、失败状态，并把运行中间状态持续写到 `results/runs/<run_id>/`。常用文件包括：

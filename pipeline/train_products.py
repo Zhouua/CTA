@@ -215,8 +215,41 @@ def build_run_id(now: datetime | None = None) -> str:
     return now.strftime("%Y%m%d_%H%M%S")
 
 
-def build_product_config_override(product_meta: dict[str, Any], product_dir: Path) -> dict[str, Any]:
+def build_product_config_override(
+    product_meta: dict[str, Any],
+    product_dir: Path,
+    *,
+    persist_to_shared_dir: bool = False,
+) -> dict[str, Any]:
+    """构造 per-product 的 config override。
+
+    Args:
+        product_meta: 品种元数据（来自 product_registry.json）
+        product_dir: 该品种本次训练的输出目录
+        persist_to_shared_dir: 是否同时把模型 / training_summary 写入共享路径
+            (results/models/, results/backtest/)。默认 False（适用于批量训练，
+            避免 25 个品种互相覆盖）。当只跑单品种时建议设为 True，让后续
+            pipeline/backtest.py 仍能从 results/models/ 加载模型重新回测。
+    """
     product_id = _normalize_product_id(product_meta["product_id"])
+    paths_override = {
+        "regime_plot": str(product_dir / "vol_regime_split.png"),
+        "training_plot": str(product_dir / "training_diagnostics.png"),
+        "training_comparison_plot": str(product_dir / "regime_model_comparison.png"),
+        "backtest_plot": str(product_dir / "backtest_curve.png"),
+        "prediction_cache": str(product_dir / "test_predictions.parquet"),
+    }
+    if persist_to_shared_dir:
+        # 单品种模式：训练产物同时写入 product_dir（保留批量产物结构）和 results/models/、
+        # results/backtest/ 等共享路径（让 pipeline/backtest.py 能直接 reuse）。
+        # 注：model_dir / backtest_dir / training_summary 不在 paths_override 里就
+        # 走 config.yaml 默认值（即 results/models/、results/backtest/）。
+        pass
+    else:
+        # 批量模式：所有产物隔离到 product_dir，避免 25 个品种互相覆盖。
+        paths_override["model_dir"] = str(product_dir / "models")
+        paths_override["training_summary"] = str(product_dir / "training_summary.json")
+        paths_override["backtest_dir"] = str(product_dir)
     return {
         "product": {
             "product_id": product_id,
@@ -228,23 +261,16 @@ def build_product_config_override(product_meta: dict[str, Any], product_dir: Pat
             "enabled": bool(product_meta.get("enabled", True)),
             "aliases": list(product_meta.get("aliases", [])),
         },
-        "paths": {
-            "regime_plot": str(product_dir / "vol_regime_split.png"),
-            "model_dir": str(product_dir / "models"),
-            "training_summary": str(product_dir / "training_summary.json"),
-            "training_plot": str(product_dir / "training_diagnostics.png"),
-            "training_comparison_plot": str(product_dir / "regime_model_comparison.png"),
-            "backtest_dir": str(product_dir),
-            "backtest_plot": str(product_dir / "backtest_curve.png"),
-            "prediction_cache": str(product_dir / "test_predictions.parquet"),
-        },
+        "paths": paths_override,
         "factors": {
             "runtime": {
                 "enabled": True,
             }
         },
         "model": {
-            "persist_models": False,
+            # 单品种 → True（写入 results/models/，可被 pipeline/backtest.py 复用）
+            # 批量    → False（避免 25 品种共用 results/models/ 互相覆盖）
+            "persist_models": bool(persist_to_shared_dir),
         },
     }
 
@@ -287,6 +313,150 @@ def summarize_product_run(
     }
 
 
+def _read_full_metrics(product_dir: Path) -> dict[str, Any]:
+    """从 product_dir 读完整 backtest_summary.json，返回写 md 需要的所有字段。
+    任何字段读不到都退回 None，不抛错。"""
+    bs_path = product_dir / "backtest_summary.json"
+    if not bs_path.exists():
+        # 单品种模式时 backtest_summary 在 results/backtest/ 下，product_dir 没这文件
+        bs_path = product_dir.parent.parent.parent / "backtest" / "backtest_summary.json"
+        if not bs_path.exists():
+            return {}
+    try:
+        s = json.loads(bs_path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    tb = s.get("test_backtest", {}) or {}
+    vb = s.get("validation_backtest", {}) or {}
+    tp = s.get("test_prediction_metrics", {}) or {}
+    vp = s.get("validation_prediction_metrics", {}) or {}
+    by_reg = s.get("test_prediction_metrics_by_regime", {}) or {}
+    return {
+        "test_net":     (tb.get("net", {}) or {}).get("annual_return"),
+        "test_gross":   (tb.get("gross", {}) or {}).get("annual_return"),
+        "test_sharpe":  (tb.get("net", {}) or {}).get("sharpe"),
+        "test_mdd":     (tb.get("net", {}) or {}).get("max_drawdown"),
+        "test_trades":  tb.get("trade_count"),
+        "test_winrate": tb.get("trade_win_rate"),
+        "test_ic":      tp.get("spearman_ic"),
+        "val_net":      (vb.get("net", {}) or {}).get("annual_return"),
+        "val_sharpe":   (vb.get("net", {}) or {}).get("sharpe"),
+        "val_ic":       vp.get("spearman_ic"),
+        "low_vol_rows":  (by_reg.get("low_vol", {}) or {}).get("rows"),
+        "high_vol_rows": (by_reg.get("high_vol", {}) or {}).get("rows"),
+    }
+
+
+def write_run_summary_md(
+    run_dir: Path,
+    run_id: str,
+    results: list[dict[str, Any]],
+    sort_by: str = "test_net",
+) -> Path:
+    """写入 results/runs/<run_id>/run_summary.md。
+    按 sort_by （test_net 或 test_sharpe）降序列出所有 success 品种的关键指标。
+    skipped / failed / disabled 单独列出。
+    """
+    from datetime import datetime
+
+    rows: list[dict[str, Any]] = []
+    other: list[dict[str, Any]] = []  # skipped / failed / disabled
+    for r in results:
+        status = str(r.get("status", "")).lower()
+        if status != "success":
+            other.append(r)
+            continue
+        pid = _normalize_product_id(r.get("product_id"))
+        product_dir = Path(r.get("product_dir") or (run_dir / pid))
+        m = _read_full_metrics(product_dir)
+        rows.append({
+            "product_id": pid,
+            "category": r.get("category", ""),
+            "feature_count": r.get("feature_count"),
+            "mid_weekly_feature_count": r.get("mid_weekly_feature_count"),
+            **m,
+        })
+
+    # 排序：按指定 metric 降序，None 排到最后
+    def _key(rec):
+        v = rec.get(sort_by)
+        return (-(v if isinstance(v, (int, float)) else float("-inf")),)
+
+    rows.sort(key=_key)
+
+    def _pct(x, digits=2):
+        if x is None or (isinstance(x, float) and not (x == x)):  # NaN
+            return "—"
+        return f"{x*100:+.{digits}f}%"
+
+    def _f(x, digits=2):
+        if x is None or (isinstance(x, float) and not (x == x)):
+            return "—"
+        return f"{x:+.{digits}f}"
+
+    def _i(x):
+        if x is None:
+            return "—"
+        try:
+            return f"{int(x):,}"
+        except Exception:
+            return str(x)
+
+    lines: list[str] = []
+    lines.append(f"# Batch run summary: `{run_id}`\n")
+    lines.append(f"_generated at {datetime.now().isoformat(timespec='seconds')}_  ")
+    lines.append(f"_run dir: `{run_dir}`_  ")
+    lines.append(f"_sort by: **{sort_by} desc**_\n")
+
+    if rows:
+        lines.append(f"## Test 集回测结果（{len(rows)} 品种成功）\n")
+        lines.append("| # | product | TEST net | TEST gross | sharpe | trades | win% | IC | VAL net | VAL sharpe | VAL IC | low/high vol rows | features (mid) |")
+        lines.append("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
+        for i, r in enumerate(rows, 1):
+            low_n = r.get("low_vol_rows")
+            high_n = r.get("high_vol_rows")
+            regime_str = f"{_i(low_n)} / {_i(high_n)}"
+            mid_n = r.get("mid_weekly_feature_count")
+            feat_str = f"{_i(r.get('feature_count'))} ({_i(mid_n)} mid)" if mid_n else f"{_i(r.get('feature_count'))}"
+            wr = r.get("test_winrate")
+            wr_str = f"{wr*100:.1f}%" if isinstance(wr, (int, float)) else "—"
+            lines.append(
+                f"| {i} | **{r['product_id']}** | "
+                f"{_pct(r.get('test_net'))} | {_pct(r.get('test_gross'))} | "
+                f"{_f(r.get('test_sharpe'))} | {_i(r.get('test_trades'))} | {wr_str} | "
+                f"{_f(r.get('test_ic'), 4)} | "
+                f"{_pct(r.get('val_net'))} | {_f(r.get('val_sharpe'))} | "
+                f"{_f(r.get('val_ic'), 4)} | {regime_str} | {feat_str} |"
+            )
+        lines.append("")
+        # 简要统计
+        net_vals = [r.get("test_net") for r in rows if isinstance(r.get("test_net"), (int, float))]
+        sharpe_vals = [r.get("test_sharpe") for r in rows if isinstance(r.get("test_sharpe"), (int, float))]
+        if net_vals and sharpe_vals:
+            import statistics as st
+            lines.append("### 摘要")
+            lines.append(f"- TEST net annual：median **{st.median(net_vals)*100:+.2f}%** / mean {st.mean(net_vals)*100:+.2f}% / "
+                         f"max {max(net_vals)*100:+.2f}% / min {min(net_vals)*100:+.2f}%")
+            lines.append(f"- TEST sharpe：median **{st.median(sharpe_vals):+.2f}** / mean {st.mean(sharpe_vals):+.2f} / "
+                         f"max {max(sharpe_vals):+.2f} / min {min(sharpe_vals):+.2f}")
+            lines.append(f"- 正收益品种：{sum(1 for v in net_vals if v > 0)} / {len(net_vals)}")
+            lines.append("")
+
+    if other:
+        lines.append(f"## 其他状态（{len(other)} 品种）\n")
+        lines.append("| product | status | error |")
+        lines.append("|---|---|---|")
+        for r in other:
+            err = str(r.get("error", "") or "")[:160]
+            lines.append(f"| {_normalize_product_id(r.get('product_id'))} | "
+                         f"{r.get('status', '')} | {err} |")
+        lines.append("")
+
+    out_path = run_dir / "run_summary.md"
+    out_path.write_text("\n".join(lines), encoding="utf-8")
+    return out_path
+
+
 def save_product_artifacts(
     product_dir: Path,
     product_meta: dict[str, Any],
@@ -305,9 +475,6 @@ def save_product_artifacts(
 
     with (product_dir / "feature_manifest.json").open("w", encoding="utf-8") as f:
         json.dump(prepared.feature_manifest, f, indent=2, ensure_ascii=False)
-
-    with (product_dir / "product_meta_snapshot.json").open("w", encoding="utf-8") as f:
-        json.dump(_to_native(product_meta), f, indent=2, ensure_ascii=False)
 
 
 def _build_basic_result(
@@ -367,6 +534,7 @@ def run_single_product_training(
     config_path: str | None,
     run_dir: Path,
     force_rebuild: bool = False,
+    persist_to_shared_dir: bool = False,
 ) -> dict[str, Any]:
     from backtest import build_backtest_settings, execute_backtest, write_backtest_outputs
     from dataset import prepare_data
@@ -374,7 +542,9 @@ def run_single_product_training(
 
     product_id = _normalize_product_id(product_meta["product_id"])
     product_dir = run_dir / product_id
-    config_override = build_product_config_override(product_meta, product_dir)
+    config_override = build_product_config_override(
+        product_meta, product_dir, persist_to_shared_dir=persist_to_shared_dir
+    )
 
     prepared = prepare_data(config_path=config_path, force_rebuild=force_rebuild, config_override=config_override)
     artifact_map, training_summary, _ = train_dual_regime_models(
@@ -387,6 +557,19 @@ def run_single_product_training(
     backtest_artifacts = execute_backtest(prepared=prepared, artifact_map=artifact_map, settings=backtest_settings)
     write_backtest_outputs(backtest_artifacts, backtest_settings)
     save_product_artifacts(product_dir=product_dir, product_meta=product_meta, prepared=prepared, backtest_artifacts=backtest_artifacts)
+
+    # 写诊断图到 product_dir：覆盖 report.md 章节 1.2 + 1.3 + 1.6 引用的所有图
+    # （vol_regime_split / backtest_curve 由 dataset.py / backtest.py 已经自动产出，
+    # 这里补足 dist_* / factor_* / factor_top20_model_importance.png 共 7 张）。
+    try:
+        from diagnostics import generate_diagnostic_charts
+        generate_diagnostic_charts(
+            prepared=prepared,
+            artifact_map=artifact_map,
+            output_dir=product_dir,
+        )
+    except Exception as exc:  # noqa: BLE001
+        print(f"[diag] WARNING: 诊断图生成失败 product={product_id}: {type(exc).__name__}: {exc}")
 
     return summarize_product_run(
         product_meta=product_meta,
@@ -401,10 +584,15 @@ def train_selected_products(
     config_path: str | None,
     run_dir: Path,
     force_rebuild: bool = False,
-    executor: Callable[[dict[str, Any], str | None, Path, bool], dict[str, Any]] = run_single_product_training,
+    executor: Callable[..., dict[str, Any]] = run_single_product_training,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     results: list[dict[str, Any]] = []
     failures: list[dict[str, Any]] = []
+
+    # 单品种模式：自动 persist 模型到 results/models/，方便 pipeline/backtest.py 复用。
+    # 批量（多品种）：保持隔离，每个品种产物独占 product_dir。
+    enabled_records = [m for m in product_records if not m.get("_batch_skip_status") and bool(m.get("enabled", True))]
+    persist_to_shared_dir = len(enabled_records) == 1
 
     for product_meta in product_records:
         product_id = _normalize_product_id(product_meta.get("product_id"))
@@ -416,7 +604,7 @@ def train_selected_products(
             continue
 
         try:
-            results.append(executor(product_meta, config_path, run_dir, force_rebuild))
+            results.append(executor(product_meta, config_path, run_dir, force_rebuild, persist_to_shared_dir))
         except Exception as exc:
             error_message = f"{type(exc).__name__}: {exc}"
             failures.append(build_failure_entry(product_id=product_id, error_message=error_message, trace_text=traceback.format_exc()))
@@ -455,19 +643,13 @@ def write_run_outputs(
     ordered_results = _ordered_rows([dict(row) for row in results], normalized_selected)
     ordered_failures = _ordered_rows([dict(row) for row in failures], normalized_selected)
 
-    result_df = pd.DataFrame(ordered_results)
-    result_df.to_csv(run_dir / "run_summary.csv", index=False, encoding="utf-8")
+    # 保留：JSON 形式的结果汇总（resume 路径会读 run_summary.json）
     (run_dir / "run_summary.json").write_text(json.dumps(_to_native(ordered_results), indent=2, ensure_ascii=False), encoding="utf-8")
     (run_dir / "failed_products.json").write_text(json.dumps(_to_native(ordered_failures), indent=2, ensure_ascii=False), encoding="utf-8")
+    # 移除：run_summary.csv / insufficient_coverage_products.{json,csv} / manifest.json
+    # 用户偏好：批量运行只保留 JSON + run_summary.md（人类可读）
 
     insufficient_coverage_rows = [row for row in ordered_results if _is_insufficient_coverage_status(row.get("status"))]
-    insufficient_coverage_df = pd.DataFrame(insufficient_coverage_rows)
-    insufficient_coverage_df.to_csv(run_dir / "insufficient_coverage_products.csv", index=False, encoding="utf-8")
-    (run_dir / "insufficient_coverage_products.json").write_text(
-        json.dumps(_to_native(insufficient_coverage_rows), indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
-
     completed_products = [_normalize_product_id(row.get("product_id")) for row in ordered_results if _normalize_product_id(row.get("product_id"))]
     completed_set = set(completed_products)
     pending_products = [product_id for product_id in normalized_selected if product_id not in completed_set]
@@ -496,10 +678,9 @@ def write_run_outputs(
         "run_dir": str(run_dir),
         "run_summary_path": str(run_dir / "run_summary.json"),
         "failed_products_path": str(run_dir / "failed_products.json"),
-        "insufficient_coverage_products_path": str(run_dir / "insufficient_coverage_products.json"),
         "resume_from": resume_from,
     }
-    (run_dir / "manifest.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
+    # manifest dict 不再写盘（用户偏好），仅作为函数返回值供调用方使用。
     return manifest
 
 
@@ -586,12 +767,20 @@ def execute_training_session(
     force_rebuild: bool = False,
     existing_results: list[dict[str, Any]] | None = None,
     resume_from: str | None = None,
-    executor: Callable[[dict[str, Any], str | None, Path, bool], dict[str, Any]] = run_single_product_training,
+    executor: Callable[..., dict[str, Any]] = run_single_product_training,
     logger: Callable[[str], None] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
     logger = logger or _default_logger
     selected_products = [_normalize_product_id(item.get("product_id")) for item in product_records]
     started_at = datetime.now().isoformat()
+    # 单品种模式：把模型 / training_summary / backtest_summary 写入共享路径
+    # （results/models/、results/backtest/），让 pipeline/backtest.py 等下游脚本
+    # 可以直接读取，避免和批量 (--all) 模式互相覆盖的问题。
+    enabled_for_run = [
+        m for m in product_records
+        if not m.get("_batch_skip_status") and bool(m.get("enabled", True))
+    ]
+    persist_to_shared_dir = len(enabled_for_run) == 1
 
     results_map: dict[str, dict[str, Any]] = {
         _normalize_product_id(row.get("product_id")): dict(row)
@@ -645,7 +834,7 @@ def execute_training_session(
                 logger(f"[batch] [{current_step}/{len(selected_products)}] skipped_disabled product={product_id}")
             else:
                 try:
-                    result = executor(product_meta, config_path, run_dir, force_rebuild)
+                    result = executor(product_meta, config_path, run_dir, force_rebuild, persist_to_shared_dir)
                     results_map[product_id] = result
                     failures_map.pop(product_id, None)
                     logger(
@@ -721,7 +910,15 @@ def execute_training_session(
     if manifest["failed_products"]:
         logger(f"[batch] failed_products={', '.join(manifest['failed_products'])}")
     _log_top_results(final_results, logger=logger)
-    logger(f"[batch] manifest={run_dir / 'manifest.json'}")
+    logger(f"[batch] run_dir={run_dir}")
+
+    # 写人类可读的 markdown 总结：按 TEST net annual_return 降序列出全部成功品种
+    try:
+        summary_md = write_run_summary_md(run_dir=run_dir, run_id=run_id, results=final_results, sort_by="test_net")
+        logger(f"[batch] summary_md={summary_md}")
+    except Exception as exc:  # noqa: BLE001
+        logger(f"[batch] WARNING: write_run_summary_md failed: {type(exc).__name__}: {exc}")
+
     return final_results, final_failures, manifest
 
 
@@ -735,6 +932,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--resume-run",
         default=None,
         help="Resume an existing batch run by run_id or run directory; only non-success products will be retrained.",
+    )
+    parser.add_argument(
+        "--run-name",
+        default=None,
+        help="自定义本次 run 的目录名（默认为 build_run_id() 生成的时间戳 YYYYMMDD_HHMMSS）。"
+             "结果会写到 results/runs/<run_name>/ 下；与 --resume-run 互斥。",
     )
     return parser
 
@@ -762,7 +965,10 @@ if __name__ == "__main__":
     selected = annotate_products_for_batch_skip(selected, **load_batch_training_settings(config_path=args.config))
 
     retained_results: list[dict[str, Any]] = []
-    run_id = build_run_id()
+    # run_id 命名优先级：--resume-run > --run-name > 自动时间戳
+    if args.run_name and args.resume_run:
+        raise SystemExit("--run-name 与 --resume-run 互斥；resume 会复用原 run 目录名。")
+    run_id = (args.run_name or "").strip() or build_run_id()
     run_dir = resolve_run_root(config_path=args.config) / run_id
     if resume_run_dir is not None:
         retained_results, _ = split_resume_products(selected, existing_results)

@@ -31,6 +31,11 @@ from dataloader.splitByVol import (
     summarize_monthly_vol,
 )
 from factor_engine import generate_runtime_factors, normalize_runtime_factor_config
+from cal_factors import (
+    add_engineered_features,
+    add_mid_micro_interactions,
+    compute_mid_weekly_derivatives,
+)
 
 
 REGIME_NAME_MAP = {-1: "low_vol", 1: "high_vol"}
@@ -140,6 +145,9 @@ def build_data_settings(
     model_cfg = get_section(config, "model")
     factors_cfg = get_section(config, "factors", {})
     runtime_cfg = normalize_runtime_factor_config(get_section(factors_cfg, "runtime", {}))
+    # 因子选择配置（按 train 集 abs IC 排序保留 top_n，剔除低 IC 因子）
+    # 因子注册表配置：data/factor_registry.json，记录每个因子的 use_in_training 标记
+    factor_registry_cfg = get_section(factors_cfg, "registry", {}) if isinstance(factors_cfg, dict) else {}
     product_cfg = get_section(config, "product", {})
     mid_weekly_cfg = get_section(config, "mid_weekly", {})
     derived_cfg = get_section(mid_weekly_cfg, "derived", {}) if isinstance(mid_weekly_cfg, dict) else {}
@@ -231,6 +239,27 @@ def build_data_settings(
             {str(k): float(v) for k, v in (mid_weekly_cfg.get("freq_expected_ratio", {}) or {}).items()}
             if isinstance(mid_weekly_cfg, dict) else {}
         ),
+        # 发布滞后：global fallback（publication_lag_days）+ per-freq 覆盖（publication_lag_days_per_freq）。
+        # 同一 xlsx 内不同 freq 列会被分别 lag 到不同 ts。详见 config.yaml::mid_weekly。
+        "mid_weekly_publication_lag_days": int(mid_weekly_cfg.get("publication_lag_days", 0)) if isinstance(mid_weekly_cfg, dict) else 0,
+        "mid_weekly_publication_lag_days_per_freq": (
+            {str(k): int(v) for k, v in (mid_weekly_cfg.get("publication_lag_days_per_freq", {}) or {}).items()}
+            if isinstance(mid_weekly_cfg, dict) else {}
+        ),
+        # extreme_flag transform 阈值（A1.1）
+        "mid_weekly_extreme_high_quantile": (
+            float(mid_weekly_cfg.get("extreme_high_quantile", 0.85))
+            if isinstance(mid_weekly_cfg, dict) else 0.85
+        ),
+        "mid_weekly_extreme_low_quantile": (
+            float(mid_weekly_cfg.get("extreme_low_quantile", 0.15))
+            if isinstance(mid_weekly_cfg, dict) else 0.15
+        ),
+        # mid × micro 显式交互（A1.2）：详见 _add_mid_micro_interactions
+        "mid_weekly_micro_interactions": (
+            dict(mid_weekly_cfg.get("micro_interactions", {}) or {})
+            if isinstance(mid_weekly_cfg, dict) else {}
+        ),
         "vol_window": int(vol_cfg.get("window", 20)),
         "vol_percentage": float(vol_cfg.get("vol_percentage", 0.7)),
         "label_train_only": bool(vol_cfg.get("label_train_only", False)),
@@ -242,6 +271,17 @@ def build_data_settings(
         "target_vol_epsilon": float(model_cfg.get("target_vol_epsilon", 1e-8)),
         "target_vol_floor_quantile": float(model_cfg.get("target_vol_floor_quantile", 0.05)),
         "runtime_factors": runtime_cfg,
+        # 因子注册表（JSON 文件路径 + enable 开关）。若 enabled 且 registry 文件存在，
+        # 则在 prepare 中读取每个因子的 mean_ic / icir，按 config 当前阈值即时判定
+        # train / not_train。注册表由 scripts/audit_factor_ic_importance.py 在每次
+        # 训练后用 walk-forward 月度 IC 刷新数值（仅基于 train split，不含 val）。
+        "factor_registry_enabled": bool(factor_registry_cfg.get("enabled", True)) if isinstance(factor_registry_cfg, dict) else True,
+        "factor_registry_path": str(factor_registry_cfg.get("path", "data/factor_registry.json")) if isinstance(factor_registry_cfg, dict) else "data/factor_registry.json",
+        # 因子审计阈值：与 audit script 共用，训练时也按这套阈值即时判定。
+        # 改完 config 不需要单独跑 audit 即可生效（除非要刷新 mean_ic / icir 数值）。
+        # 判定规则（AND 关系）：abs(mean_ic) >= min_abs_ic AND abs(icir) >= min_icir
+        "audit_min_abs_ic": float(get_section(factors_cfg, "audit_thresholds", {}).get("min_abs_ic", 0.005)) if isinstance(factors_cfg, dict) else 0.005,
+        "audit_min_icir": float(get_section(factors_cfg, "audit_thresholds", {}).get("min_icir", 0.3)) if isinstance(factors_cfg, dict) else 0.3,
     }
 
 
@@ -441,6 +481,11 @@ class FactorDatasetBuilder:
         Returns ``(frame, meta)`` where ``frame`` has the canonical timestamp
         column plus one ``MID_*`` column per indicator, and ``meta`` maps
         column -> {indicator_name, frequency, unit, indicator_id, source_file}.
+
+        防前视：按列的 freq 分别 lag 时间戳。同一行不同 freq 的列会被 lag 到不同 ts，
+        然后在 ts 上 outer-merge 回 wide 表。lag 配置见 config.yaml::mid_weekly：
+          - publication_lag_days：fallback 全局值（freq 不在 per_freq 表里时使用）
+          - publication_lag_days_per_freq：按 freq 字符串覆盖（如 {日: 1, 周: 3, 月: 5}）
         """
         HEADER_ROWS = 4
         META_UNIT, META_NAME, META_FREQ, META_ID = 0, 1, 2, 3
@@ -453,9 +498,11 @@ class FactorDatasetBuilder:
         data = raw.iloc[HEADER_ROWS:, :].copy()
         data.iloc[:, 0] = pd.to_datetime(data.iloc[:, 0], errors="coerce")
         data = data.dropna(subset=[data.columns[0]])
-        data = data.sort_values(data.columns[0])
+        data = data.sort_values(data.columns[0]).reset_index(drop=True)
+        observation_ts = pd.to_datetime(data.iloc[:, 0].values)
 
-        frame = pd.DataFrame({self.timestamp_col: pd.to_datetime(data.iloc[:, 0].values)})
+        # 解析每列：name + freq + values
+        col_records: list[dict[str, Any]] = []
         meta: dict[str, dict[str, str]] = {}
         for col in range(1, raw.shape[1]):
             unit = "" if pd.isna(raw.iat[META_UNIT, col]) else str(raw.iat[META_UNIT, col]).strip()
@@ -463,7 +510,8 @@ class FactorDatasetBuilder:
             freq = "" if pd.isna(raw.iat[META_FREQ, col]) else str(raw.iat[META_FREQ, col]).strip()
             ind_id = "" if pd.isna(raw.iat[META_ID, col]) else str(raw.iat[META_ID, col]).strip()
             col_name = self._build_mid_column_name(product_id, ind_id, name, seen)
-            frame[col_name] = pd.to_numeric(data.iloc[:, col].values, errors="coerce").astype("float32")
+            values = pd.to_numeric(data.iloc[:, col].values, errors="coerce")
+            col_records.append({"name": col_name, "freq": freq, "values": values})
             meta[col_name] = {
                 "indicator_name": name,
                 "frequency": freq,
@@ -472,8 +520,42 @@ class FactorDatasetBuilder:
                 "source_file": factor_path.name,
             }
 
-        # Collapse duplicate timestamps by keeping last observation per ts.
-        frame = frame.sort_values(self.timestamp_col).drop_duplicates(subset=[self.timestamp_col], keep="last").reset_index(drop=True)
+        # 按列分别应用 lag（依据该列的 freq）
+        default_lag = int(self.settings.get("mid_weekly_publication_lag_days", 0))
+        per_freq_lag = self.settings.get("mid_weekly_publication_lag_days_per_freq", {}) or {}
+
+        sub_frames: list[pd.DataFrame] = []
+        for rec in col_records:
+            lag_days = int(per_freq_lag.get(rec["freq"], default_lag))
+            shifted_ts = observation_ts + pd.Timedelta(days=lag_days)
+            sub = pd.DataFrame({
+                self.timestamp_col: shifted_ts,
+                rec["name"]: rec["values"].astype("float32"),
+            }).dropna(subset=[rec["name"]])
+            if sub.empty:
+                continue
+            sub = sub.sort_values(self.timestamp_col).drop_duplicates(
+                subset=[self.timestamp_col], keep="last"
+            )
+            sub_frames.append(sub)
+
+        if not sub_frames:
+            return pd.DataFrame({self.timestamp_col: pd.to_datetime([])}), meta
+
+        # outer-merge 把所有 sub_frames 拼回 wide。不同 freq 列在不同 ts 行可能
+        # NaN，下游 merge_asof + ffill 会按时间顺序拉到 5min bar。
+        frame = sub_frames[0]
+        for sub in sub_frames[1:]:
+            frame = frame.merge(sub, on=self.timestamp_col, how="outer")
+        frame = frame.sort_values(self.timestamp_col).drop_duplicates(
+            subset=[self.timestamp_col], keep="last"
+        ).reset_index(drop=True)
+        # 保证所有列都在最终 frame 里（全 NaN 的列也保留）
+        for rec in col_records:
+            if rec["name"] not in frame.columns:
+                frame[rec["name"]] = np.nan
+        ordered_cols = [self.timestamp_col] + [rec["name"] for rec in col_records]
+        frame = frame[ordered_cols]
         return frame, meta
 
     def _read_mid_weekly_csv(self, factor_path: Path, seen: set[str]) -> tuple[pd.DataFrame, dict[str, dict[str, str]]]:
@@ -501,6 +583,10 @@ class FactorDatasetBuilder:
         frame = frame.sort_values(timestamp_col).drop_duplicates(subset=[timestamp_col], keep="last")
         frame[value_col] = pd.to_numeric(frame[value_col], errors="coerce").astype("float32")
         frame = frame.rename(columns={timestamp_col: self.timestamp_col, value_col: final}).reset_index(drop=True)
+        # 全局发布滞后（与 xlsx 路径一致）
+        lag_days = int(self.settings.get("mid_weekly_publication_lag_days", 0))
+        if lag_days > 0:
+            frame[self.timestamp_col] = frame[self.timestamp_col] + pd.Timedelta(days=lag_days)
         meta = {
             final: {
                 "indicator_name": value_col,
@@ -602,54 +688,38 @@ class FactorDatasetBuilder:
     def _compute_mid_weekly_derivatives(
         self, factor_df: pd.DataFrame, level_cols: list[str]
     ) -> tuple[pd.DataFrame | None, list[str]]:
-        """Per-file derivative engineering on the sparse weekly observation frame.
-
-        Returns (derived_df, derived_cols) where derived_df is indexed by a
-        subset of the sparse observation timestamps (intersection with whichever
-        col had enough non-null observations). Windows are counted in
-        *observations* (≈ weeks given the weekly source). ``ret`` is pct_change
-        clipped to [-1, 5]; ``zscore`` divides by rolling std (0 → NaN);
-        ``pct_rank`` uses rolling.rank(pct=True).
+        """中观因子派生计算的 thin wrapper。
+        实际逻辑集中在 pipeline/cal_factors.py::compute_mid_weekly_derivatives。
+        本方法只负责从 self.settings 取参数 + 早退（disabled / 空列等）。
         """
         if not self.settings["mid_weekly_derived_enabled"] or not level_cols:
             return None, []
-        windows = self.settings["mid_weekly_derived_windows"]
-        transforms = self.settings["mid_weekly_derived_transforms"]
-        if not windows or not transforms:
-            return None, []
-        ts_col = self.timestamp_col
-        pieces: list[pd.DataFrame] = []
-        derived_cols: list[str] = []
-        for col in level_cols:
-            s = factor_df.sort_values(ts_col).set_index(ts_col)[col].dropna()
-            min_required = max(2, min(windows))
-            if len(s) < min_required:
-                continue
-            per_col = pd.DataFrame(index=s.index)
-            for w in windows:
-                if "ret" in transforms:
-                    name = f"{col}_RET_{w}"
-                    per_col[name] = s.pct_change(w).clip(-1.0, 5.0)
-                    derived_cols.append(name)
-                if "zscore" in transforms:
-                    name = f"{col}_ZSCORE_{w}"
-                    mp = max(1, w // 2)
-                    mean = s.rolling(w, min_periods=mp).mean()
-                    std = s.rolling(w, min_periods=mp).std().replace(0, np.nan)
-                    per_col[name] = (s - mean) / std
-                    derived_cols.append(name)
-                if "pct_rank" in transforms:
-                    name = f"{col}_PCT_RANK_{w}"
-                    mp = max(1, w // 2)
-                    per_col[name] = s.rolling(w, min_periods=mp).rank(pct=True)
-                    derived_cols.append(name)
-            pieces.append(per_col)
-        if not pieces:
-            return None, []
-        derived = pd.concat(pieces, axis=1).sort_index()
-        derived.index.name = ts_col
-        derived = derived.astype("float32")
-        return derived.reset_index(), derived_cols
+        return compute_mid_weekly_derivatives(
+            factor_df,
+            level_cols,
+            timestamp_col=self.timestamp_col,
+            windows=self.settings["mid_weekly_derived_windows"],
+            transforms=self.settings["mid_weekly_derived_transforms"],
+            extreme_high_quantile=float(self.settings.get("mid_weekly_extreme_high_quantile", 0.85)),
+            extreme_low_quantile=float(self.settings.get("mid_weekly_extreme_low_quantile", 0.15)),
+        )
+
+    def _add_mid_micro_interactions(
+        self, merged_df: pd.DataFrame, mid_cols: list[str]
+    ) -> tuple[pd.DataFrame, list[str]]:
+        """mid × micro 显式交互的 thin wrapper。
+        实际逻辑集中在 pipeline/cal_factors.py::add_mid_micro_interactions。
+        """
+        cfg = self.settings.get("mid_weekly_micro_interactions", {}) or {}
+        if not bool(cfg.get("enabled", False)):
+            return merged_df, []
+        return add_mid_micro_interactions(
+            merged_df,
+            mid_cols,
+            micro_factors=list(cfg.get("micro_factors", []) or []),
+            mid_selector=str(cfg.get("mid_selector", "pct_rank_only")),
+            max_columns=int(cfg.get("max_columns", 100)),
+        )
 
     def _merge_mid_weekly_features(self, raw_df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
         if not self.settings["use_mid_weekly"]:
@@ -756,261 +826,17 @@ class FactorDatasetBuilder:
         return merged, output_mid_cols
 
     def _add_engineered_features(self, df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
-        if not self.settings["use_engineered_features"]:
-            return df, []
-
-        engineered = df.copy()
-        engineered = engineered.sort_values(self.timestamp_col).reset_index(drop=True)
-        close = engineered["CLOSE"].astype("float64")
-        high = engineered["HIGH"].astype("float64")
-        low = engineered["LOW"].astype("float64")
-        open_ = engineered["OPEN"].astype("float64")
-        volume = engineered["VOLUME"].astype("float64") if "VOLUME" in engineered.columns else pd.Series(0.0, index=engineered.index)
-        position = engineered["POSITION"].astype("float64") if "POSITION" in engineered.columns else pd.Series(0.0, index=engineered.index)
-        amount = engineered["AMOUNT"].astype("float64") if "AMOUNT" in engineered.columns else pd.Series(0.0, index=engineered.index)
-
-        short_w = int(self.settings["engineered_windows"].get("short", 5))
-        med_w = int(self.settings["engineered_windows"].get("medium", 20))
-        long_w = int(self.settings["engineered_windows"].get("long", 60))
-        eps = 1e-8
-
-        ret1 = close.pct_change()
-        high_low_range = high - low
-        true_range = pd.concat(
-            [
-                high_low_range,
-                (high - close.shift(1)).abs(),
-                (low - close.shift(1)).abs(),
-            ],
-            axis=1,
-        ).max(axis=1)
-
-        engineered["ENG_RET_1"] = ret1
-        engineered["ENG_LOG_RET_1"] = np.log(close / close.shift(1))
-        engineered["ENG_RANGE_1"] = high / (low + eps) - 1.0
-        engineered["ENG_BODY_1"] = close / (open_ + eps) - 1.0
-        engineered["ENG_BODY_ABS"] = engineered["ENG_BODY_1"].abs()
-        engineered["ENG_CLOSE_TO_RANGE"] = (close - low) / (high_low_range + eps)
-        engineered["ENG_INTRABAR_VOL"] = high_low_range / (close + eps)
-
-        for window in sorted({short_w, med_w, long_w}):
-            min_periods = max(3, window // 3)
-            ma = close.rolling(window, min_periods=min_periods).mean()
-            rv = ret1.rolling(window, min_periods=min_periods).std()
-            engineered[f"ENG_RET_{window}"] = close.pct_change(window)
-            engineered[f"ENG_RV_{window}"] = rv
-            engineered[f"ENG_PRICE_TO_MA_{window}"] = close / (ma + eps) - 1.0
-            engineered[f"ENG_VOLUME_RATIO_{window}"] = volume / (volume.rolling(window, min_periods=min_periods).mean() + eps)
-            engineered[f"ENG_POSITION_RATIO_{window}"] = position / (position.rolling(window, min_periods=min_periods).mean() + eps)
-            engineered[f"ENG_AMOUNT_RATIO_{window}"] = amount / (amount.rolling(window, min_periods=min_periods).mean() + eps)
-
-        engineered[f"ENG_ATR_{med_w}"] = true_range.rolling(med_w, min_periods=max(3, med_w // 3)).mean() / (close + eps)
-        engineered[f"ENG_ATR_{long_w}"] = true_range.rolling(long_w, min_periods=max(3, long_w // 3)).mean() / (close + eps)
-        engineered[f"ENG_VOL_RATIO_{short_w}_{med_w}"] = engineered[f"ENG_RV_{short_w}"] / (engineered[f"ENG_RV_{med_w}"] + eps)
-        engineered[f"ENG_RET_DIFF_{short_w}_{med_w}"] = engineered[f"ENG_RET_{short_w}"] - engineered[f"ENG_RET_{med_w}"]
-        engineered[f"ENG_PRICE_BREAKOUT_{med_w}"] = close / (
-            high.shift(1).rolling(med_w, min_periods=max(3, med_w // 3)).max() + eps
-        ) - 1.0
-        engineered[f"ENG_PRICE_BREAKDOWN_{med_w}"] = close / (
-            low.shift(1).rolling(med_w, min_periods=max(3, med_w // 3)).min() + eps
-        ) - 1.0
-
-
-        minute_of_day = engineered[self.timestamp_col].dt.hour * 60 + engineered[self.timestamp_col].dt.minute
-        engineered["ENG_TOD_SIN"] = np.sin(2.0 * np.pi * minute_of_day / 1440.0)
-        engineered["ENG_TOD_COS"] = np.cos(2.0 * np.pi * minute_of_day / 1440.0)
-        engineered["ENG_WEEKDAY"] = engineered[self.timestamp_col].dt.dayofweek.astype("float32")
-        engineered["ENG_IS_DAY_SESSION"] = engineered[self.timestamp_col].dt.hour.between(9, 15).astype("float32")
-
-        # Long-window momentum (120 / 240 / 480 bars)
-        for _w in [120, 240, 480]:
-            _mp = max(3, _w // 3)
-            _ma_w = close.rolling(_w, min_periods=_mp).mean()
-            engineered[f"ENG_RET_{_w}"] = close.pct_change(_w)
-            engineered[f"ENG_RV_{_w}"] = ret1.rolling(_w, min_periods=_mp).std()
-            engineered[f"ENG_PRICE_TO_MA_{_w}"] = close / (_ma_w + eps) - 1.0
-            engineered[f"ENG_VOLUME_RATIO_{_w}"] = volume / (volume.rolling(_w, min_periods=_mp).mean() + eps)
-
-        # Cross-window momentum consistency: mean sign across [5,20,60,120,240]-bar returns
-        _cons_windows = [w for w in [5, 20, 60, 120, 240] if f"ENG_RET_{w}" in engineered.columns]
-        if len(_cons_windows) >= 2:
-            _signs = pd.concat([np.sign(engineered[f"ENG_RET_{w}"]) for w in _cons_windows], axis=1)
-            engineered["ENG_MOMENTUM_CONSISTENCY"] = _signs.mean(axis=1)
-
-        # Overnight gap (non-zero only on first bar of each day) and intraday cumulative return
-        _tdate = engineered[self.trade_date_col]
-        _daily_last_close = engineered.groupby(_tdate)["CLOSE"].last().shift(1)
-        _prev_close_mapped = _tdate.map(_daily_last_close)
-        _is_first_bar = engineered.groupby(_tdate).cumcount() == 0
-        _day_open = engineered.groupby(_tdate)["OPEN"].transform("first")
-        engineered["ENG_OVERNIGHT_GAP"] = np.where(
-            _is_first_bar,
-            open_ / (_prev_close_mapped + eps) - 1.0,
-            0.0,
+        # 工程化特征 ENG_* 的全部计算逻辑集中在 pipeline/cal_factors.py。
+        # 此处仅做配置传参 + 调用，保持 FactorDatasetBuilder 接口不变。
+        return add_engineered_features(
+            df,
+            timestamp_col=self.timestamp_col,
+            trade_date_col=self.trade_date_col,
+            engineered_windows=self.settings["engineered_windows"],
+            use_engineered_features=bool(self.settings["use_engineered_features"]),
+            use_synthetic_factors=bool(self.settings["use_synthetic_factors"]),
         )
-        engineered["ENG_OVERNIGHT_GAP_ABS"] = engineered["ENG_OVERNIGHT_GAP"].abs()
-        engineered["ENG_INTRADAY_RET"] = (close - _day_open) / (_day_open + eps)
 
-        # Rolling VWAP deviation: amount/volume sum approximates VWAP
-        for _w in [20, 60]:
-            _mp = max(3, _w // 3)
-            _rvwap = amount.rolling(_w, min_periods=_mp).sum() / (volume.rolling(_w, min_periods=_mp).sum() + eps)
-            engineered[f"ENG_VWAP_DEV_{_w}"] = close / (_rvwap + eps) - 1.0
-            _lo_w = low.rolling(_w, min_periods=_mp).min()
-            _hi_w = high.rolling(_w, min_periods=_mp).max()
-            engineered[f"ENG_PRICE_POSITION_{_w}"] = (close - _lo_w) / (_hi_w - _lo_w + eps)
-
-        # Close z-score over medium/long windows
-        for _w in [60, 120]:
-            _mp = max(3, _w // 3)
-            _rm = close.rolling(_w, min_periods=_mp).mean()
-            _rs = close.rolling(_w, min_periods=_mp).std()
-            engineered[f"ENG_CLOSE_ZSCORE_{_w}"] = (close - _rm) / (_rs + eps)
-
-        # Signed volume accumulation (volume-price trend)
-        _ret_sign = np.sign(ret1)
-        for _w in [10, 30, 60]:
-            _mp = max(3, _w // 3)
-            engineered[f"ENG_VOLUME_PRICE_TREND_{_w}"] = (
-                (_ret_sign * volume).rolling(_w, min_periods=_mp).sum()
-                / (volume.rolling(_w, min_periods=_mp).sum() + eps)
-            )
-
-        # Buying pressure: close-to-high fraction weighted by volume
-        for _w in [5, 20]:
-            _mp = max(3, _w // 3)
-            _bp = (close - low) / (high_low_range + eps) * volume
-            engineered[f"ENG_BUYING_PRESSURE_{_w}"] = (
-                _bp.rolling(_w, min_periods=_mp).sum()
-                / (volume.rolling(_w, min_periods=_mp).sum() + eps)
-            )
-
-        # Parkinson volatility (high-low estimator)
-        _log_hl_sq = np.log(high / (low + eps)) ** 2
-        for _w in [20, 60]:
-            _mp = max(3, _w // 3)
-            engineered[f"ENG_PARKINSON_VOL_{_w}"] = np.sqrt(
-                _log_hl_sq.rolling(_w, min_periods=_mp).mean() / (4.0 * np.log(2))
-            ) * np.sqrt(240)
-
-        # Volatility regime indicators (use runtime STD factors if available)
-        if "STD20" in engineered.columns and "STD60" in engineered.columns:
-            engineered["ENG_VOL_TREND"] = engineered["STD20"] / (engineered["STD60"] + eps)
-        if "STD20" in engineered.columns:
-            _std20 = engineered["STD20"].astype("float64")
-            engineered["ENG_VOL_ZSCORE"] = (
-                (_std20 - _std20.rolling(120, min_periods=40).mean())
-                / (_std20.rolling(120, min_periods=40).std() + eps)
-            )
-
-        # OI-based factors (POSITION = open interest / 持仓量)
-        for _w in [5, 20]:
-            _mp = max(3, _w // 3)
-            _oi_chg = position.pct_change(_w)
-            _ret_w = close.pct_change(_w)
-            engineered[f"ENG_OI_CHANGE_{_w}"] = _oi_chg
-            engineered[f"ENG_OI_PRICE_CONFIRM_{_w}"] = (np.sign(_oi_chg) == np.sign(_ret_w)).astype("float32")
-            engineered[f"ENG_OI_DIVERGE_{_w}"] = (
-                ((_oi_chg > 0) & (_ret_w < 0)) | ((_oi_chg < 0) & (_ret_w > 0))
-            ).astype("float32")
-
-        # ── synthetic factors (interactions / ratios / accelerations) ────────
-        # S1: vol-normalized momentum (Sharpe-like)
-        for _w in [5, 20, 60, 120]:
-            _mp = max(3, _w // 3)
-            _ret_w = close.pct_change(_w)
-            _rv_w = ret1.rolling(_w, min_periods=_mp).std()
-            engineered[f"ENG_SHARPE_{_w}"] = _ret_w / (_rv_w * np.sqrt(_w) + eps)
-
-        # S2: momentum acceleration
-        for _w in [20, 60]:
-            _ret_now = close.pct_change(_w)
-            _ret_lag = close.pct_change(_w).shift(_w)
-            engineered[f"ENG_MOM_ACCEL_{_w}"] = _ret_now - _ret_lag
-
-        # S3: trend × volatility regime interaction
-        if "STD20" in engineered.columns and "STD60" in engineered.columns:
-            _vol_regime = engineered["STD20"].astype("float64") / (engineered["STD60"].astype("float64") + eps)
-            for _w in [20, 60]:
-                _ret_w = close.pct_change(_w)
-                engineered[f"ENG_TREND_X_VOLREG_{_w}"] = _ret_w * _vol_regime
-
-        # S4: range expansion
-        for _w in [20, 60]:
-            _mp = max(3, _w // 3)
-            _hl = high_low_range
-            _hl_ma = _hl.rolling(_w, min_periods=_mp).mean()
-            engineered[f"ENG_RANGE_EXPAND_{_w}"] = _hl / (_hl_ma + eps) - 1.0
-
-        # S5: volume-price divergence
-        for _w in [20, 60]:
-            _mp = max(3, _w // 3)
-            _vol_z = (volume - volume.rolling(_w, min_periods=_mp).mean()) / (volume.rolling(_w, min_periods=_mp).std() + eps)
-            _ret_z = close.pct_change(_w) / (ret1.rolling(_w, min_periods=_mp).std() * np.sqrt(_w) + eps)
-            engineered[f"ENG_VOL_PRICE_DIVERGE_{_w}"] = _vol_z.abs() - _ret_z.abs()
-
-        # S6: tick-direction accumulation
-        _tick_dir = np.sign(close - open_)
-        for _w in [20, 60]:
-            _mp = max(3, _w // 3)
-            engineered[f"ENG_TICK_DIR_VW_{_w}"] = (
-                (_tick_dir * volume).rolling(_w, min_periods=_mp).sum()
-                / (volume.rolling(_w, min_periods=_mp).sum() + eps)
-            )
-
-        # S7: efficiency ratio (Kaufman)
-        for _w in [20, 60]:
-            _mp = max(3, _w // 3)
-            _displacement = (close - close.shift(_w)).abs()
-            _path = ret1.abs().rolling(_w, min_periods=_mp).sum() * close.shift(_w).abs()
-            engineered[f"ENG_EFFICIENCY_{_w}"] = _displacement / (_path + eps)
-
-        # S8: cross-window divergence
-        if all(f"ENG_RET_{w}" in engineered.columns for w in [5, 60]):
-            engineered["ENG_DIVERGE_5_60"] = np.sign(engineered["ENG_RET_5"]) * np.sign(engineered["ENG_RET_60"])
-        if all(f"ENG_RET_{w}" in engineered.columns for w in [20, 240]):
-            engineered["ENG_DIVERGE_20_240"] = np.sign(engineered["ENG_RET_20"]) * np.sign(engineered["ENG_RET_240"])
-
-        # S9: intraday extreme positioning — distance from day's high/low normalized by ATR
-        _day_high = engineered.groupby(_tdate)["HIGH"].cummax()
-        _day_low = engineered.groupby(_tdate)["LOW"].cummin()
-        _atr_proxy = true_range.rolling(20, min_periods=6).mean() + eps
-        engineered["ENG_DIST_DAY_HIGH"] = (close - _day_high) / _atr_proxy
-        engineered["ENG_DIST_DAY_LOW"] = (close - _day_low) / _atr_proxy
-        engineered["ENG_DAY_RANGE_POS"] = (close - _day_low) / (_day_high - _day_low + eps)
-
-        # S10: signed return × intraday position — agreement of direction & location
-        if "ENG_INTRADAY_RET" in engineered.columns:
-            engineered["ENG_INTRADAY_RET_X_RET20"] = engineered["ENG_INTRADAY_RET"] * close.pct_change(20)
-
-        # Daily-state features broadcast to 1-min bars (current-day values, no lag).
-        _daily_close = engineered.groupby(_tdate)["CLOSE"].last()
-        _daily_log_ret = np.log(_daily_close / _daily_close.shift(1))
-        _daily_vol_20 = _daily_log_ret.rolling(20, min_periods=10).std()
-        engineered["daily_ret"] = _tdate.map(_daily_log_ret).astype("float32")
-        engineered["daily_vol_20"] = _tdate.map(_daily_vol_20).astype("float32")
-
-        # Ablation: drop synthetic ENG_* (anything beyond the original 35) when disabled
-        if not self.settings["use_synthetic_factors"]:
-            _ORIGINAL_ENG = {
-                "ENG_RET_1","ENG_LOG_RET_1","ENG_RANGE_1","ENG_BODY_1","ENG_BODY_ABS",
-                "ENG_CLOSE_TO_RANGE","ENG_INTRABAR_VOL",
-                "ENG_RET_5","ENG_RET_20","ENG_RET_60",
-                "ENG_RV_5","ENG_RV_20","ENG_RV_60",
-                "ENG_PRICE_TO_MA_5","ENG_PRICE_TO_MA_20","ENG_PRICE_TO_MA_60",
-                "ENG_VOLUME_RATIO_5","ENG_VOLUME_RATIO_20","ENG_VOLUME_RATIO_60",
-                "ENG_POSITION_RATIO_5","ENG_POSITION_RATIO_20","ENG_POSITION_RATIO_60",
-                "ENG_AMOUNT_RATIO_5","ENG_AMOUNT_RATIO_20","ENG_AMOUNT_RATIO_60",
-                "ENG_ATR_20","ENG_ATR_60","ENG_VOL_RATIO_5_20","ENG_RET_DIFF_5_20",
-                "ENG_PRICE_BREAKOUT_20","ENG_PRICE_BREAKDOWN_20",
-                "ENG_TOD_SIN","ENG_TOD_COS","ENG_WEEKDAY","ENG_IS_DAY_SESSION",
-            }
-            _drop = [c for c in engineered.columns if c.startswith("ENG_") and c not in _ORIGINAL_ENG]
-            engineered = engineered.drop(columns=_drop)
-
-        engineered_cols = [col for col in engineered.columns if col.startswith("ENG_")]
-        engineered[engineered_cols] = engineered[engineered_cols].astype("float32")
-        return engineered, engineered_cols
 
     def _add_targets(self, df: pd.DataFrame) -> pd.DataFrame:
         prepared = df.copy().sort_values(self.timestamp_col).reset_index(drop=True)
@@ -1086,6 +912,12 @@ class FactorDatasetBuilder:
         merged_df, mid_weekly_cols = self._merge_mid_weekly_features(merged_df)
         factor_cols = list(dict.fromkeys(runtime_factor_cols + mid_weekly_cols))
         merged_df, engineered_cols = self._add_engineered_features(merged_df)
+        # A1.2: mid × micro 显式交互（必须在 _add_engineered_features 之后，
+        # 此时 micro 因子如 ENG_PREV_CLOSE_LOG_RET 已经存在于 merged_df 中）。
+        # MIDxMICRO_* 列归入 engineered_cols 一起返回，下游 registry/diagnostics 按前缀识别即可。
+        merged_df, mid_micro_cols = self._add_mid_micro_interactions(merged_df, mid_weekly_cols)
+        if mid_micro_cols:
+            engineered_cols = list(dict.fromkeys(engineered_cols + mid_micro_cols))
         merged_df = self._add_targets(merged_df)
 
         self.paths["merged_cache"].parent.mkdir(parents=True, exist_ok=True)
@@ -1214,7 +1046,10 @@ class FactorDatasetBuilder:
         merged_data["DATA_SPLIT"] = merged_data["DATA_SPLIT"].replace({"valid": "val"})
 
         extra_feature_cols = []
-        for _extra in ["daily_vol_20", "daily_ret", "ret_1d", "ret_3d", "ret_5d", "ret_10d"]:
+        # 注：原列表中的 daily_ret / daily_vol_20 已因前视泄露被治理，
+        # ret_3d/ret_5d/ret_10d 实际上从未被生成；当前仅保留 dataloader/splitByVol.py
+        # 中通过 _raw_ret.shift(1) 计算的 ret_1d（昨日全天对数收益，无前视）。
+        for _extra in ["ret_1d"]:
             if _extra in merged_data.columns:
                 extra_feature_cols.append(_extra)
 
@@ -1264,6 +1099,91 @@ class FactorDatasetBuilder:
         usable_feature_cols = std_series[std_series > self.settings["min_factor_std"]].index.tolist()
         if not usable_feature_cols:
             raise ValueError("All feature columns were removed by train-set variance filtering.")
+
+        # ── 基于 factor_registry.json 的因子选择（运行时按 config 阈值即时判定）──
+        # registry 由 scripts/audit_factor_ic_importance.py 维护，记录每个因子在
+        # train split 上的 walk-forward 月度 IC 统计：mean_ic / std_ic / icir。
+        # 训练时按当前 config.yaml::factors.audit_thresholds 阈值即时判定 train / not_train，
+        # 改完 config 不必重跑 audit 即可生效。判定规则（AND 关系，与 audit 脚本一致）：
+        #   abs(mean_ic) ≥ min_abs_ic  AND  abs(icir) ≥ min_icir  → keep
+        # 不在 registry 中的新因子默认保留（首次审计前不会被无故 drop）。
+        # importance_gain 不参与判定（仅作元数据 / 章节图展示用）。
+        if self.settings.get("factor_registry_enabled", False):
+            registry_path_raw = self.settings.get("factor_registry_path") or "data/factor_registry.json"
+            registry_path = Path(registry_path_raw)
+            if not registry_path.is_absolute():
+                registry_path = (PROJECT_ROOT / registry_path_raw).resolve()
+            if registry_path.exists():
+                try:
+                    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+                    min_abs_ic = float(self.settings.get("audit_min_abs_ic", 0.005))
+                    min_icir = float(self.settings.get("audit_min_icir", 0.3))
+
+                    # 把 registry 的所有因子整合成 name → metrics（兼容新旧 schema）
+                    name_to_metrics: dict[str, dict[str, float]] = {}
+                    buckets = ("train_factor", "not_train_factor")
+                    if any(b in registry for b in buckets):
+                        for bucket in buckets:
+                            for f in registry.get(bucket, []):
+                                name = str(f.get("name", ""))
+                                if not name:
+                                    continue
+                                # mean_ic 优先，缺失则退回旧字段 abs_ic（无符号）
+                                mean_ic = float(f.get("mean_ic", f.get("abs_ic", 0.0)))
+                                icir = float(f.get("icir", 0.0))
+                                n_windows = int(f.get("n_windows", 0))
+                                name_to_metrics[name] = {
+                                    "mean_ic": mean_ic,
+                                    "icir": icir,
+                                    "n_windows": n_windows,
+                                }
+                    else:
+                        for f in registry.get("factors", []):
+                            name = str(f.get("name", ""))
+                            if not name:
+                                continue
+                            mean_ic = float(f.get("mean_ic", f.get("abs_ic", 0.0)))
+                            icir = float(f.get("icir", 0.0))
+                            n_windows = int(f.get("n_windows", 0))
+                            name_to_metrics[name] = {
+                                "mean_ic": mean_ic,
+                                "icir": icir,
+                                "n_windows": n_windows,
+                            }
+
+                    if name_to_metrics:
+                        before = len(usable_feature_cols)
+                        kept: list[str] = []
+                        for col in usable_feature_cols:
+                            metrics = name_to_metrics.get(col)
+                            # 不在 registry 的新因子默认保留
+                            if metrics is None:
+                                kept.append(col)
+                                continue
+                            # n_windows < 3 视为统计样本不足，无法判定 → 保留（保守）
+                            if metrics["n_windows"] < 3:
+                                kept.append(col)
+                                continue
+                            if (
+                                abs(metrics["mean_ic"]) >= min_abs_ic
+                                and abs(metrics["icir"]) >= min_icir
+                            ):
+                                kept.append(col)
+                        usable_feature_cols = kept
+                        after = len(usable_feature_cols)
+                        n_skipped = before - after
+                        if n_skipped > 0:
+                            print(
+                                f"[factor_registry] skip {n_skipped} factors via runtime thresholds "
+                                f"(min_abs_ic={min_abs_ic}, min_icir={min_icir}); "
+                                f"kept {after}/{before}"
+                            )
+                except Exception as exc:
+                    warnings.warn(
+                        f"[factor_registry] failed to load {registry_path}: {exc}; skipping registry filter.",
+                        RuntimeWarning,
+                        stacklevel=2,
+                    )
 
         # Fill NaN in MID_* columns with 0.0 so dropna(required_cols) doesn't
         # kill rows for pre-arrival / stale-clamped windows. The companion
@@ -1317,6 +1237,7 @@ class FactorDatasetBuilder:
         metadata = {
             "product": self.settings["product_meta"],
             "target_col": target_col,
+            "target_horizon": int(self.settings["target_horizon"]),
             "feature_count": int(len(usable_feature_cols)),
             "factor_feature_count": int(len([col for col in usable_feature_cols if col in usable_factor_cols])),
             "runtime_factor_feature_count": int(len(usable_runtime_cols)),

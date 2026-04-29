@@ -113,7 +113,7 @@ def main() -> None:
     else:
         micro_pred = None
         print(f"  [warning] Micro test_predictions.csv not found at {MICRO_PRED_PATH}")
-        print(f"  Run scripts/generate_micro_test_predictions.py first for precision/recall charts.")
+        print(f"  Run scripts/generate_report_charts.py --section 1.7 --regenerate-predictions first.")
 
     # Load micro decile data from existing comparison JSON (dual_regime entries)
     comp = load_json(COMPARISON_METRICS)

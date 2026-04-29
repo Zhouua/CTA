@@ -1,8 +1,6 @@
-/data/*
-!/data/product_registry.json
-!/data/mid_weekly/
+/data/分产品1min主连
 /data/mid_weekly/*
-!/data/mid_weekly/.gitkeep
+
 
 .DS_Store
 .qoder
