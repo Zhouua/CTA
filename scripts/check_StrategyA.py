@@ -267,7 +267,7 @@ def main() -> None:
     run_dir = PROJECT_ROOT / "results" / "runs" / RUN_NAME
     run_dir.mkdir(parents=True, exist_ok=True)
     registry = _load_registry(config_path)
-    products = [p.upper() for p in args.products]
+    products = list(dict.fromkeys(p.upper() for p in args.products))
 
     rows: list[dict] = []
     result_cache = run_dir / "comparison.json"
