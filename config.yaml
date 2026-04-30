@@ -137,6 +137,7 @@ model:
   feature_importance_top_n: 20
   persist_models: true
   min_regime_val_ic: -0.01  # regime quality gate: val spearman IC below this → position=0 for that regime
+  sample_weight_alpha: 0    # 策略A: 0=均匀权重(当前), 1=线性, 2=平方; A/B对比先跑alpha=1
   common_params:
     objective: regression
     metric: l2

@@ -78,6 +78,7 @@ def build_model_settings(
         "early_stopping_rounds": int(model_cfg.get("early_stopping_rounds", 50)),
         "feature_importance_top_n": int(model_cfg.get("feature_importance_top_n", 20)),
         "persist_models": bool(model_cfg.get("persist_models", True)),
+        "sample_weight_alpha": float(model_cfg.get("sample_weight_alpha", 0.0)),
         "common_params": dict(model_cfg.get("common_params", {})),
         "low_vol_overrides": dict(model_cfg.get("low_vol_overrides", {})),
         "high_vol_overrides": dict(model_cfg.get("high_vol_overrides", {})),
@@ -185,7 +186,8 @@ def _prepare_xy(
 
 
 def _convert_prediction(df: pd.DataFrame, raw_pred: np.ndarray, target_col: str) -> np.ndarray:
-    if target_col == "target_vol_norm":
+    # target_vol_norm 和 target_extreme_norm 共享同一 vol_scale 分母，反归一化方式相同
+    if target_col in {"target_vol_norm", "target_extreme_norm"}:
         scale = df["target_vol_scale"].to_numpy(dtype="float64")
         return raw_pred.astype("float64") * scale
     return raw_pred.astype("float64")
@@ -223,13 +225,20 @@ def train_single_regime_model(
     num_boost_round: int,
     early_stopping_rounds: int,
     regime_label: int,
+    sample_weight_alpha: float = 0.0,
 ) -> RegimeModelArtifact:
     regime_name = REGIME_NAME_MAP[int(regime_label)]
     scaler = _build_scaler(scale_method)
     x_train, y_train = _prepare_xy(train_df, feature_cols, target_col, scaler, fit_scaler=True)
     x_val, y_val = _prepare_xy(val_df, feature_cols, target_col, scaler, fit_scaler=False)
 
-    train_set = lgb.Dataset(x_train, label=y_train, feature_name=feature_cols)
+    # weight_i = |target_i|^alpha，归一化使总损失尺度不变；val不传weight保持early stopping无偏
+    weights = None
+    if sample_weight_alpha > 0:
+        w = np.abs(y_train) ** sample_weight_alpha
+        weights = w / (w.mean() + 1e-10)
+
+    train_set = lgb.Dataset(x_train, label=y_train, weight=weights, feature_name=feature_cols)
     val_set = lgb.Dataset(x_val, label=y_val, feature_name=feature_cols, reference=train_set)
     evals_result: dict[str, Any] = {}
     booster = lgb.train(
@@ -559,6 +568,7 @@ def train_dual_regime_models(
             num_boost_round=settings["num_boost_round"],
             early_stopping_rounds=settings["early_stopping_rounds"],
             regime_label=regime_label,
+            sample_weight_alpha=settings["sample_weight_alpha"],
         )
         artifact_map[regime_label] = artifact
         val_prediction_map[regime_label] = predict_single_regime(
