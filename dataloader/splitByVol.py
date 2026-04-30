@@ -139,6 +139,7 @@ def split_by_vol(
     test_ratio=0.15,
     label_train_only=True,
     split_granularity="month",
+    rolling_regime_window: int = 0,
 ):
     if (vol_threshold is None) == (vol_percentage is None):
         raise ValueError("vol_threshold 和 vol_percentage 必须二选一")
@@ -182,10 +183,25 @@ def split_by_vol(
     daily_label_mask = daily_close["daily_vol_20"].notna()
     if label_train_only:
         daily_label_mask &= daily_close["DATA_SPLIT"] == "train"
-    daily_close.loc[daily_label_mask, "DAILY_VOL_LABEL"] = _label_by_cutoff(
-        daily_close.loc[daily_label_mask, "daily_vol_20"],
-        daily_cutoff,
-    )
+
+    if rolling_regime_window > 0:
+        # 滚动 regime：每天相对于过去 rolling_regime_window 天的 vol 中位数判断高/低波动。
+        # 不依赖固定训练期阈值，自适应波动率制度性变化，无前视（只用历史数据）。
+        rolling_median = (
+            daily_close["daily_vol_20"]
+            .rolling(rolling_regime_window, min_periods=rolling_regime_window // 3)
+            .median()
+        )
+        valid_mask = daily_label_mask & rolling_median.notna()
+        daily_close.loc[valid_mask, "DAILY_VOL_LABEL"] = _label_by_cutoff(
+            daily_close.loc[valid_mask, "daily_vol_20"],
+            rolling_median[valid_mask],
+        )
+    else:
+        daily_close.loc[daily_label_mask, "DAILY_VOL_LABEL"] = _label_by_cutoff(
+            daily_close.loc[daily_label_mask, "daily_vol_20"],
+            daily_cutoff,
+        )
     # 按照月度划分，取当月日级波动率的平均值进行比较
     monthly_close = (
         daily_close.groupby("MONTH", as_index=False)

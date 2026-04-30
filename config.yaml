@@ -49,6 +49,7 @@ vol_split:
   regime_label_source: daily
   split_granularity: month
   min_train_rows_per_regime: 20000
+  rolling_regime_window: 240  # >0 时用滚动 N 日 vol 中位数做 regime 阈值，适应波动率制度性变化；0=禁用（用训练期固定阈值）
 
 factors:
   runtime:

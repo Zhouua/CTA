@@ -267,6 +267,7 @@ def build_data_settings(
         "regime_label_source": str(vol_cfg.get("regime_label_source", "daily")).lower(),
         "split_granularity": str(vol_cfg.get("split_granularity", "month")).lower(),
         "min_train_rows_per_regime": int(vol_cfg.get("min_train_rows_per_regime", 10000)),
+        "rolling_regime_window": int(vol_cfg.get("rolling_regime_window", 0)),
         "target_col": str(model_cfg.get("target_column", "target_vol_norm")),
         "target_vol_window": int(model_cfg.get("target_vol_window", 20)),
         "target_vol_epsilon": float(model_cfg.get("target_vol_epsilon", 1e-8)),
@@ -1046,6 +1047,7 @@ class FactorDatasetBuilder:
             test_ratio=self.settings["test_ratio"],
             label_train_only=self.settings["label_train_only"],
             split_granularity=self.settings["split_granularity"],
+            rolling_regime_window=self.settings["rolling_regime_window"],
         )
 
         os.environ.setdefault("MPLCONFIGDIR", str((PROJECT_ROOT / ".mplconfig").resolve()))
