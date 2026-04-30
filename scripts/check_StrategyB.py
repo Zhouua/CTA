@@ -188,7 +188,21 @@ def _run_for_product(
         flush=True,
     )
 
-    return {"baseline": baseline, "strategy_b": strategy_b}
+    # strategy_c: target_extreme（无归一化）+ target_hit 止盈
+    print(f"  [{product_id}] training strategy_c (extreme_raw + target_hit, tp={tp_fraction}) ...", flush=True)
+    t0 = time.time()
+    strategy_c = _train_and_backtest(
+        prepared, "target_extreme", "target_hit", tp_fraction,
+        config_path, config_override,
+    )
+    print(
+        f"  [{product_id}] strategy_c done ({time.time()-t0:.0f}s)  "
+        f"net={_pct(strategy_c['annual_return'])}  sharpe={_f2(strategy_c['sharpe'])}  "
+        f"val_ic={strategy_c['val_ics']}",
+        flush=True,
+    )
+
+    return {"baseline": baseline, "strategy_b": strategy_b, "strategy_c": strategy_c}
 
 
 # ─────────────────────────────────────────────
@@ -201,13 +215,13 @@ def _write_comparison(run_dir: Path, rows: list[dict], tp_fraction: float) -> No
     )
 
     lines = [
-        f"# check_strategy_b — baseline (vol_norm+quantile) vs strategy_b (extreme_norm+target_hit, tp={tp_fraction})\n",
-        "共享 prepare_data + factor_audit；训练目标和回测退出逻辑均不同。\n",
+        f"# check_strategy_b — baseline vs strategy_b (extreme_norm) vs strategy_c (extreme_raw), tp={tp_fraction}\n",
+        "共享 prepare_data + factor_audit；strategy_b/c 均用 target_hit 退出，区别在于 target 是否 vol 归一化。\n",
         "> ⚠️ val_IC 列为 low_vol/high_vol regime 的验证集 Spearman IC；任意 regime < -0.01 → quality gate 触发，trades=0。\n",
-        "| product | baseline net | strategy_b net | baseline sharpe | strategy_b sharpe "
-        "| baseline IC | strategy_b IC | baseline trades | strategy_b trades "
-        "| baseline val_IC (lv/hv) | strategy_b val_IC (lv/hv) |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|",
+        "| product | base net | B net | C net | base sharpe | B sharpe | C sharpe "
+        "| base IC | B IC | C IC | base trades | B trades | C trades "
+        "| base val_IC (lv/hv) | B val_IC (lv/hv) | C val_IC (lv/hv) |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|---|",
     ]
 
     def _val_ic_str(m: dict) -> str:
@@ -218,19 +232,19 @@ def _write_comparison(run_dir: Path, rows: list[dict], tp_fraction: float) -> No
         hv_s = f"{hv:+.4f}" if isinstance(hv, float) else "—"
         return f"{lv_s} / {hv_s}"
 
-    def _row(pid, b, c):
+    def _row(pid, b, sb, sc):
         return (
             f"| **{pid}** "
-            f"| {_pct(b.get('annual_return'))} | {_pct(c.get('annual_return'))} "
-            f"| {_f2(b.get('sharpe'))} | {_f2(c.get('sharpe'))} "
-            f"| {_f4(b.get('spearman_ic'))} | {_f4(c.get('spearman_ic'))} "
-            f"| {_i(b.get('trade_count'))} | {_i(c.get('trade_count'))} "
-            f"| {_val_ic_str(b)} | {_val_ic_str(c)} |"
+            f"| {_pct(b.get('annual_return'))} | {_pct(sb.get('annual_return'))} | {_pct(sc.get('annual_return'))} "
+            f"| {_f2(b.get('sharpe'))} | {_f2(sb.get('sharpe'))} | {_f2(sc.get('sharpe'))} "
+            f"| {_f4(b.get('spearman_ic'))} | {_f4(sb.get('spearman_ic'))} | {_f4(sc.get('spearman_ic'))} "
+            f"| {_i(b.get('trade_count'))} | {_i(sb.get('trade_count'))} | {_i(sc.get('trade_count'))} "
+            f"| {_val_ic_str(b)} | {_val_ic_str(sb)} | {_val_ic_str(sc)} |"
         )
 
-    ok_rows = [r for r in rows if "baseline" in r and "strategy_b" in r]
+    ok_rows = [r for r in rows if "baseline" in r and "strategy_b" in r and "strategy_c" in r]
     for r in ok_rows:
-        lines.append(_row(r["product_id"], r["baseline"], r["strategy_b"]))
+        lines.append(_row(r["product_id"], r["baseline"], r["strategy_b"], r["strategy_c"]))
 
     if ok_rows:
         import statistics as st
@@ -242,6 +256,7 @@ def _write_comparison(run_dir: Path, rows: list[dict], tp_fraction: float) -> No
             "**avg**",
             {k: _avg(k, "baseline") for k in ["annual_return", "sharpe", "spearman_ic", "trade_count"]},
             {k: _avg(k, "strategy_b") for k in ["annual_return", "sharpe", "spearman_ic", "trade_count"]},
+            {k: _avg(k, "strategy_c") for k in ["annual_return", "sharpe", "spearman_ic", "trade_count"]},
         ))
 
     for r in rows:
@@ -292,7 +307,7 @@ def main() -> None:
     if not args.rerun_all and result_cache.exists():
         try:
             for r in json.loads(result_cache.read_text(encoding="utf-8")):
-                if "baseline" in r and "strategy_b" in r:
+                if "baseline" in r and "strategy_b" in r and "strategy_c" in r:
                     existing[r["product_id"]] = r
         except Exception:
             pass
@@ -328,12 +343,13 @@ def main() -> None:
     print("\n[check_strategy_b] summary:", flush=True)
     for r in rows:
         if "baseline" in r:
-            b, c = r["baseline"], r["strategy_b"]
-            delta = (c["sharpe"] - b["sharpe"]) if isinstance(c.get("sharpe"), float) and isinstance(b.get("sharpe"), float) else float("nan")
+            b, sb, sc = r["baseline"], r["strategy_b"], r.get("strategy_c", {})
+            db = (sb["sharpe"] - b["sharpe"]) if isinstance(sb.get("sharpe"), float) and isinstance(b.get("sharpe"), float) else float("nan")
+            dc = (sc["sharpe"] - b["sharpe"]) if isinstance(sc.get("sharpe"), float) and isinstance(b.get("sharpe"), float) else float("nan")
             print(
-                f"  {r['product_id']:4s}  baseline net={_pct(b['annual_return'])} sharpe={_f2(b['sharpe'])}"
-                f"  |  strategy_b net={_pct(c['annual_return'])} sharpe={_f2(c['sharpe'])}"
-                f"  |  ΔSharpe={delta:+.2f}",
+                f"  {r['product_id']:4s}  base={_f2(b['sharpe'])}"
+                f"  |  B={_f2(sb['sharpe'])} (Δ{db:+.2f})"
+                f"  |  C={_f2(sc.get('sharpe'))} (Δ{dc:+.2f})",
                 flush=True,
             )
 

@@ -186,10 +186,11 @@ def _prepare_xy(
 
 
 def _convert_prediction(df: pd.DataFrame, raw_pred: np.ndarray, target_col: str) -> np.ndarray:
-    # target_vol_norm 和 target_extreme_norm 共享同一 vol_scale 分母，反归一化方式相同
     if target_col in {"target_vol_norm", "target_extreme_norm"}:
+        # 归一化目标：raw_pred 在 vol_scale 单位，需反归一化
         scale = df["target_vol_scale"].to_numpy(dtype="float64")
         return raw_pred.astype("float64") * scale
+    # target_extreme / 其他非归一化目标：raw_pred 已在 return 单位，直接返回
     return raw_pred.astype("float64")
 
 

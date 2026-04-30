@@ -886,6 +886,7 @@ class FactorDatasetBuilder:
             np.abs(future_max_ret) >= np.abs(future_min_ret), future_max_ret, future_min_ret
         )
         prepared["target_extreme_norm"] = (signed_extreme / (prepared["target_vol_scale"] + eps)).astype("float32")
+        prepared["target_extreme"] = signed_extreme.astype("float32")
 
         prepared["5min_return"] = np.log(
             prepared.groupby(self.trade_date_col, dropna=False)["CLOSE"].shift(-5) / prepared["CLOSE"]
@@ -1027,6 +1028,8 @@ class FactorDatasetBuilder:
             "target",
             "target_vol_scale",
             "target_vol_norm",
+            "target_extreme_norm",
+            "target_extreme",
             "5min_return",
         }
 
