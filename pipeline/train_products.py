@@ -411,14 +411,15 @@ def write_run_summary_md(
 
     if rows:
         lines.append(f"## Test 集回测结果（{len(rows)} 品种成功）\n")
-        lines.append("| # | product | TEST net | TEST gross | sharpe | trades | win% | IC | VAL net | VAL sharpe | VAL IC | low/high vol rows | features (mid) |")
-        lines.append("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
+        lines.append("| # | product | TEST net | TEST gross | sharpe | trades | win% | IC | VAL net | VAL sharpe | VAL IC | low/high vol rows | features | mid |")
+        lines.append("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|:---:|")
         for i, r in enumerate(rows, 1):
             low_n = r.get("low_vol_rows")
             high_n = r.get("high_vol_rows")
             regime_str = f"{_i(low_n)} / {_i(high_n)}"
             mid_n = r.get("mid_weekly_feature_count")
-            feat_str = f"{_i(r.get('feature_count'))} ({_i(mid_n)} mid)" if mid_n else f"{_i(r.get('feature_count'))}"
+            feat_str = f"{_i(r.get('feature_count'))}"
+            mid_str = f"✓ {_i(mid_n)}" if mid_n else "✗"
             wr = r.get("test_winrate")
             wr_str = f"{wr*100:.1f}%" if isinstance(wr, (int, float)) else "—"
             lines.append(
@@ -427,7 +428,7 @@ def write_run_summary_md(
                 f"{_f(r.get('test_sharpe'))} | {_i(r.get('test_trades'))} | {wr_str} | "
                 f"{_f(r.get('test_ic'), 4)} | "
                 f"{_pct(r.get('val_net'))} | {_f(r.get('val_sharpe'))} | "
-                f"{_f(r.get('val_ic'), 4)} | {regime_str} | {feat_str} |"
+                f"{_f(r.get('val_ic'), 4)} | {regime_str} | {feat_str} | {mid_str} |"
             )
         lines.append("")
         # 简要统计
@@ -441,6 +442,8 @@ def write_run_summary_md(
             lines.append(f"- TEST sharpe：median **{st.median(sharpe_vals):+.2f}** / mean {st.mean(sharpe_vals):+.2f} / "
                          f"max {max(sharpe_vals):+.2f} / min {min(sharpe_vals):+.2f}")
             lines.append(f"- 正收益品种：{sum(1 for v in net_vals if v > 0)} / {len(net_vals)}")
+            mid_count = sum(1 for r in rows if (r.get("mid_weekly_feature_count") or 0) > 0)
+            lines.append(f"- 使用 mid 因子品种：{mid_count} / {len(rows)}")
             lines.append("")
 
     if other:
