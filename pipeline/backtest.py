@@ -176,6 +176,7 @@ def generate_positions(
     confirm_count = 0
     entry_price: float = 0.0          # 策略B: 记录开仓价，用于计算持仓盈亏
     entry_pred_extreme: float = 0.0   # 策略B: 记录入场时的预测极值目标（已反归一化）
+    entry_vol_scale: float = 0.0      # 策略B改进: 记录入场 bar 的 vol_scale，作为止盈门槛基准
 
     for row in df.itertuples(index=False):
         regime_label = int(row.REGIME_LABEL)
@@ -190,6 +191,9 @@ def generate_positions(
                 cooldown = 0
                 confirm_side = 0
                 confirm_count = 0
+                entry_price = 0.0
+                entry_pred_extreme = 0.0
+                entry_vol_scale = 0.0
             positions.append(0)
             raw_signals.append(0)
             actions.append("regime_quality_skip")
@@ -206,9 +210,12 @@ def generate_positions(
 
         action = "hold_flat" if current_position == 0 else "hold_position"
         if settings["exit_mode"] == "target_hit" and entry_price > 0:
-            # 策略B: 持仓盈亏 >= tp_fraction × |pred_extreme| 则止盈
+            # 策略B改进: 持仓盈亏 >= tp_fraction × entry_vol_scale 则止盈。
+            # 用市场波动尺度（target_vol_scale = 日内滚动std × √horizon）做门槛，
+            # 而非模型预测极值（后者因 L2 regression-to-mean 系统性偏小）。
+            # 经济含义: tp_fraction=1.0 → 赚到 1σ 持仓周期收益就止盈。
             pnl = current_position * (float(row.CLOSE) / entry_price - 1.0)
-            exit_signal = pnl >= settings["tp_fraction"] * abs(entry_pred_extreme)
+            exit_signal = pnl >= settings["tp_fraction"] * entry_vol_scale
         else:
             exit_signal = abs(pred_value) <= exit_threshold
 
@@ -230,6 +237,7 @@ def generate_positions(
                     # 策略B: 记录入场信息，用于 target_hit 止盈判断
                     entry_price = float(row.CLOSE)
                     entry_pred_extreme = pred_value
+                    entry_vol_scale = float(row.target_vol_scale)  # 改进: vol_scale 做止盈基准
                 else:
                     action = "wait_confirm"
             else:
@@ -248,6 +256,7 @@ def generate_positions(
                 confirm_count = 0
                 entry_price = 0.0
                 entry_pred_extreme = 0.0
+                entry_vol_scale = 0.0
                 action = "exit_to_flat"
             elif can_exit and reverse_signal:
                 if bool(rules["allow_direct_flip"]):
@@ -259,6 +268,7 @@ def generate_positions(
                     # 直接反手：用新方向的入场信息覆盖
                     entry_price = float(row.CLOSE)
                     entry_pred_extreme = pred_value
+                    entry_vol_scale = float(row.target_vol_scale)  # 改进: vol_scale 做止盈基准
                     action = "flip"
                 elif bool(rules["flip_to_flat_first"]):
                     current_position = 0
@@ -268,6 +278,7 @@ def generate_positions(
                     confirm_count = 1
                     entry_price = 0.0
                     entry_pred_extreme = 0.0
+                    entry_vol_scale = 0.0
                     action = "flatten_before_flip"
 
         if bool(settings["flatten_at_day_end"]) and bool(row.is_day_end):
@@ -279,6 +290,7 @@ def generate_positions(
                 confirm_count = 0
                 entry_price = 0.0
                 entry_pred_extreme = 0.0
+                entry_vol_scale = 0.0
                 action = "day_end_flat"
             else:
                 confirm_side = 0
