@@ -185,17 +185,19 @@ def split_by_vol(
         daily_label_mask &= daily_close["DATA_SPLIT"] == "train"
 
     if rolling_regime_window > 0:
-        # 滚动 regime：每天相对于过去 rolling_regime_window 天的 vol 中位数判断高/低波动。
-        # 不依赖固定训练期阈值，自适应波动率制度性变化，无前视（只用历史数据）。
-        rolling_median = (
+        # 滚动 regime：每天相对于过去 rolling_regime_window 天的 vol_percentage 分位数判断高/低波动。
+        # 使用与固定阈值相同的分位数（vol_percentage），维持约 (1-vol_percentage) 的高波动占比，
+        # 同时自适应波动率制度性变化，无前视。
+        _pct = vol_percentage if vol_percentage is not None else 0.65
+        rolling_cutoff = (
             daily_close["daily_vol_20"]
             .rolling(rolling_regime_window, min_periods=rolling_regime_window // 3)
-            .median()
+            .quantile(_pct)
         )
-        valid_mask = daily_label_mask & rolling_median.notna()
+        valid_mask = daily_label_mask & rolling_cutoff.notna()
         daily_close.loc[valid_mask, "DAILY_VOL_LABEL"] = _label_by_cutoff(
             daily_close.loc[valid_mask, "daily_vol_20"],
-            rolling_median[valid_mask],
+            rolling_cutoff[valid_mask],
         )
     else:
         daily_close.loc[daily_label_mask, "DAILY_VOL_LABEL"] = _label_by_cutoff(
