@@ -24,7 +24,7 @@ data:
   train_ratio: 0.70
   valid_ratio: 0.15
   test_ratio: 0.15
-  target_horizon: 60         # 5min × 60 = 5 小时持仓窗口；让单笔预期 alpha 超过 4bp round-trip 成本
+  target_horizon: 30         # 1min × horizon 持仓窗口
   factor_pattern: "*.csv"
   factor_include: []
   factor_exclude: []
@@ -35,7 +35,7 @@ data:
   force_rebuild_cache: false
   use_engineered_features: true
   use_synthetic_factors: true
-  use_mid_weekly: true        # 启用中观因子（已加 publication_lag + 中微显式交互 MIDxMICRO_*）
+  use_mid_weekly: false        # 是否启用中观因子
   mid_alignment: asof_forward_fill
   engineered_windows:
     short: 5
@@ -44,7 +44,7 @@ data:
 
 mid_weekly:
   available_dummy: true            # emit MID_*_AVAILABLE int8 per level column
-  ffill_max_bars: 8064             # cap ffill staleness (~ 4 weeks @ 5min × 48 × 7 × 4)
+  ffill_max_bars: 8064             # cap ffill staleness (~5.6 天 @ 1min bar = 8064 / 1440)
   derived:
     enabled: true
     rolling_windows: [4, 13, 52]   # weeks
@@ -107,30 +107,20 @@ factors:
       - volume
       - correlation
     cache_generated_features: true
-  registry:
-    # 因子注册表：data/factor_registry.json 由
-    # python scripts/audit_factor_ic_importance.py 通过 IC + feature importance 维护，
-    # 训练时按 train_factor / not_train_factor 过滤；不在注册表中的新因子默认保留。
-    # 工作流：
-    #   1) 首次：所有因子参与训练 → run audit script → 写入 registry
-    #   2) 之后：训练自动跳过 not_train_factor 中的因子
-    enabled: true
-    path: data/factor_registry.json
   audit_thresholds:
-    # 因子审计阈值：基于 walk-forward 月度 IC，判定 train_factor / not_train_factor。
-    # 数据源：scripts/audit_factor_ic_importance.py 仅在 train split 上按月切窗，
-    # 计算每因子的月度 Spearman IC 序列，再聚合为 mean_ic / std_ic / icir。
-    # 判定规则（AND 关系）：abs(mean_ic) >= min_abs_ic  AND  abs(icir) >= min_icir
-    # 训练时按这套阈值即时判定（改完 config 不必重跑 audit 即生效）；
-    # audit 脚本读取该阈值刷新 registry 内的 train_factor / not_train_factor 分桶。
-    # importance_gain 不参与判定，仅作为元数据保存供章节 1.6 图表使用。
-    min_abs_ic: 0.005              # |mean_ic| 下限（train 月度 IC 的均值）
-    min_icir: 0.3                  # |ICIR| 下限（mean_ic / std_ic，刻画跨月稳定性）
+    # 因子筛选阈值，由 pipeline/factor_audit.py 在每个产品训练时即时判定。
+    # 流程：数据处理 → 因子计算 → 因子筛选(当场算IC) → 模型训练 → 回测。
+    # 数据源：当前产品 train split 按月切窗算 Spearman IC，聚合为 mean_ic/std_ic/icir。
+    # 判定规则（AND）：abs(mean_ic) >= min_abs_ic AND abs(icir) >= min_icir AND n_windows >= 3
+    # 结果当场写入 results/runs/<run_id>/<PID>/factor_registry.json（per-product，
+    # 取代旧的全局 data/factor_registry.json + feature_manifest.json）。
+    min_abs_ic: 0.005              # |mean_ic| 下限
+    min_icir: 0.3                  # |ICIR| 下限（mean_ic / std_ic，跨月稳定性）
     min_obs_per_window: 200        # 单月样本下限，少于则该月跳过该因子
 
 vol_split:
   window: 20
-  vol_percentage: 0.70
+  vol_percentage: 0.65 # 通过python scripts/exp_pure_micro_horizon_cutoff.py 实践比较获得
   label_train_only: false
   regime_label_source: daily
   split_granularity: month
@@ -172,14 +162,13 @@ signal:
   entry_quantile: 0.88
   exit_quantile: 0.4
   confirmation_bars: 2
-  min_hold_bars: 30           # 与 target_horizon=60 协调，避免持仓时长 << 预测视野
+  min_hold_bars: 10           # 与 target_horizon=60 协调，避免持仓时长 << 预测视野
   cooldown_bars: 1
   allow_direct_flip: false
   flip_to_flat_first: true
-  enforce_cost_filter: false  # 关闭：horizon=60 下单笔 alpha ~5-6bp，已超 cost filter 4bp 阈值，
-                              # 用 entry_quantile 自然控制开仓密度即可
+  enforce_cost_filter: true  # 是否关闭cost filter 4bp、用 entry_quantile 自然控制开仓密度
   round_trip_turnover: 2.0
-  cost_filter_multiple: 1
+  cost_filter_multiple: 0.85
   min_expected_edge: 0.0
 
 backtest:

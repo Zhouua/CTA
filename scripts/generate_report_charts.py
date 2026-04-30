@@ -52,7 +52,9 @@ import matplotlib.ticker as mticker
 MICRO_DIR    = PROJECT_ROOT / "results" / "runs" / "micro_result" / "RB"
 INIT_DIR     = PROJECT_ROOT / "results" / "runs" / "initial_result" / "RB"
 COMPARE_DIR  = PROJECT_ROOT / "results" / "comparison"
-FACTOR_REGISTRY_PATH = PROJECT_ROOT / "data" / "factor_registry.json"
+# factor_registry.json 现在是 per-product 文件，由训练时即时计算写入
+# results/runs/<run_id>/<PID>/factor_registry.json，不再有全局静态版本。
+# 通过 --registry CLI 参数显式传入，main() 把路径透传给 generate_section_13()。
 
 
 # ───────────────────────── 中金研报样式（统一调色板） ─────────────────────────
@@ -133,17 +135,17 @@ def _save(fig, out_path: Path) -> None:
 # ════════════════════════════════════════════════════════════════════
 
 
-def _s13_plot_top20_icir(top_n: int = 20) -> None:
-    """读取 data/factor_registry.json，绘制按 |ICIR| 降序的 Top N 因子图。
+def _s13_plot_top20_icir(registry_path: Path, top_n: int = 20) -> None:
+    """读取指定的 per-product factor_registry.json，绘制按 |ICIR| 降序的 Top N 因子图。
 
-    数据来源：scripts/audit_factor_ic_importance.py 在 train split 上按月切窗
+    数据来源：训练时由 pipeline/factor_audit.py 在当前产品 train split 上按月切窗
     计算的 Spearman walk-forward IC（mean_ic / std_ic / icir = mean_ic/std_ic）。
     样式与 pipeline/diagnostics.py::_plot_top20_ic 保持一致，便于报告中并列对比。
     """
-    if not FACTOR_REGISTRY_PATH.exists():
-        print(f"  [skip] {FACTOR_REGISTRY_PATH} 不存在")
+    if not registry_path.exists():
+        print(f"  [skip] {registry_path} 不存在")
         return
-    with FACTOR_REGISTRY_PATH.open(encoding="utf-8") as f:
+    with registry_path.open(encoding="utf-8") as f:
         reg = json.load(f)
     factors = reg.get("train_factor", []) + reg.get("not_train_factor", [])
     factors = [f for f in factors if f.get("std_ic", 0) and f.get("n_windows", 0) >= 1]
@@ -193,10 +195,11 @@ def _s13_plot_top20_icir(top_n: int = 20) -> None:
     _save(fig, MICRO_DIR / "factor_top20_icir.png")
 
 
-def generate_section_13() -> None:
-    """Section 1.3：因子 ICIR Top 20（1 张图）。"""
+def generate_section_13(registry_path: Path) -> None:
+    """Section 1.3：因子 ICIR Top 20（1 张图）。registry_path 必须显式传入
+    指向 `results/runs/<run_id>/<PID>/factor_registry.json`。"""
     print("[section 1.3] 因子 ICIR Top 20")
-    _s13_plot_top20_icir()
+    _s13_plot_top20_icir(registry_path)
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -513,6 +516,14 @@ def parse_args() -> argparse.Namespace:
         description="生成报告章节 1.3（因子 ICIR）+ 1.7（双域 vs 单域基线对比）图表。"
     )
     parser.add_argument(
+        "--registry",
+        type=Path,
+        required=True,
+        help="per-product factor_registry.json 路径，例如 "
+             "results/runs/<run_id>/RB/factor_registry.json。"
+             "由 pipeline/train_products.py 在因子筛选阶段写入。",
+    )
+    parser.add_argument(
         "--regenerate-predictions",
         action="store_true",
         help="重训 dual-regime 模型刷新 micro_result/RB/test_predictions.csv "
@@ -525,7 +536,7 @@ def main() -> int:
     args = parse_args()
     if args.regenerate_predictions:
         regenerate_micro_test_predictions()
-    generate_section_13()
+    generate_section_13(args.registry)
     generate_section_17()
     print("done.")
     return 0

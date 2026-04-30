@@ -5,6 +5,7 @@ import json
 import os
 import sys
 import traceback
+from dataclasses import replace as dc_replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
@@ -463,6 +464,11 @@ def save_product_artifacts(
     prepared,
     backtest_artifacts,
 ) -> None:
+    """写当次产品的 nav / daily_returns 到 product_dir。
+
+    feature_manifest.json 已被 factor_registry.json 取代（合并因子列表 + IC 统计 +
+    选中列），由 run_single_product_training::audit_and_filter 在因子筛选阶段写入。
+    """
     from backtest import add_daily_exposure_ratios
 
     product_dir.mkdir(parents=True, exist_ok=True)
@@ -472,9 +478,6 @@ def save_product_artifacts(
 
     daily_returns = add_daily_exposure_ratios(backtest_artifacts.test_daily.copy())
     daily_returns.to_csv(product_dir / "daily_returns.csv", index=False, encoding="utf-8")
-
-    with (product_dir / "feature_manifest.json").open("w", encoding="utf-8") as f:
-        json.dump(prepared.feature_manifest, f, indent=2, ensure_ascii=False)
 
 
 def _build_basic_result(
@@ -529,6 +532,76 @@ def build_failure_entry(product_id: str, error_message: str, trace_text: str) ->
     }
 
 
+def _load_audit_thresholds(
+    config_path: str | None,
+    config_override: dict[str, Any] | None,
+) -> tuple[float, float, int]:
+    """从 config.yaml::factors.audit_thresholds 读取阈值，缺省走硬编码。"""
+    config, _ = load_project_config(config_path, config_override=config_override)
+    factors_cfg = get_section(config, "factors", {})
+    audit_cfg = (
+        factors_cfg.get("audit_thresholds", {}) if isinstance(factors_cfg, dict) else {}
+    ) or {}
+    return (
+        float(audit_cfg.get("min_abs_ic", 0.005)),
+        float(audit_cfg.get("min_icir", 0.3)),
+        int(audit_cfg.get("min_obs_per_window", 200)),
+    )
+
+
+def _apply_factor_selection(prepared, selected_cols: list[str]):
+    """把 audit 选出的因子下发到 PreparedData：缩窄 feature_cols 与各分类子列表，
+    刷新 feature_manifest 内的 selected/all_feature_cols 字段。返回新 PreparedData。
+    """
+    selected_set = set(selected_cols)
+    new_feature_cols = [c for c in prepared.feature_cols if c in selected_set]
+    new_factor_cols = [c for c in prepared.factor_cols if c in selected_set]
+    new_engineered_cols = [c for c in prepared.engineered_cols if c in selected_set]
+    new_runtime_cols = [c for c in prepared.runtime_factor_cols if c in selected_set]
+    new_mid_weekly_cols = [c for c in prepared.mid_weekly_cols if c in selected_set]
+
+    manifest = dict(prepared.feature_manifest)
+    manifest["all_feature_cols"] = new_feature_cols
+    manifest["engineered_cols"] = [c for c in manifest.get("engineered_cols", []) if c in selected_set]
+    manifest["mid_weekly_cols"] = [c for c in manifest.get("mid_weekly_cols", []) if c in selected_set]
+    manifest["extra_feature_cols"] = [c for c in manifest.get("extra_feature_cols", []) if c in selected_set]
+    runtime_block = dict(manifest.get("runtime_factors", {}))
+    runtime_block["selected_cols"] = [c for c in runtime_block.get("selected_cols", []) if c in selected_set]
+    manifest["runtime_factors"] = runtime_block
+
+    metadata = dict(prepared.metadata)
+    metadata["feature_count"] = len(new_feature_cols)
+    metadata["factor_feature_count"] = len(new_factor_cols)
+    metadata["runtime_factor_feature_count"] = len(new_runtime_cols)
+    metadata["mid_weekly_feature_count"] = len(new_mid_weekly_cols)
+    metadata["engineered_feature_count"] = len([c for c in new_feature_cols if c.startswith("ENG_")])
+    metadata["feature_manifest"] = manifest
+
+    return dc_replace(
+        prepared,
+        feature_cols=new_feature_cols,
+        factor_cols=new_factor_cols,
+        engineered_cols=new_engineered_cols,
+        runtime_factor_cols=new_runtime_cols,
+        mid_weekly_cols=new_mid_weekly_cols,
+        feature_manifest=manifest,
+        metadata=metadata,
+    )
+
+
+def _collect_importance(artifact_map: dict[str, Any]) -> dict[str, float]:
+    """把 low_vol + high_vol 两个 regime 的 importance_gain 求和，作为 backfill 元数据。"""
+    importance: dict[str, float] = {}
+    for artifact in artifact_map.values():
+        fi = getattr(artifact, "feature_importance", None)
+        if fi is None or "feature" not in fi.columns or "importance_gain" not in fi.columns:
+            continue
+        for _, row in fi.iterrows():
+            name = str(row["feature"])
+            importance[name] = importance.get(name, 0.0) + float(row["importance_gain"])
+    return importance
+
+
 def run_single_product_training(
     product_meta: dict[str, Any],
     config_path: str | None,
@@ -536,8 +609,15 @@ def run_single_product_training(
     force_rebuild: bool = False,
     persist_to_shared_dir: bool = False,
 ) -> dict[str, Any]:
+    """严格按 数据处理 → 因子计算 → 因子筛选 → 模型训练 → 回测 顺序执行。
+
+    因子筛选当场对当前产品 train_data 算 walk-forward 月度 IC，写入
+    `product_dir/factor_registry.json`（取代旧的 `feature_manifest.json` +
+    全局 `data/factor_registry.json`），下发 selected_feature_cols 给 modeling。
+    """
     from backtest import build_backtest_settings, execute_backtest, write_backtest_outputs
     from dataset import prepare_data
+    from factor_audit import audit_and_filter, backfill_importance
     from modeling import train_dual_regime_models
 
     product_id = _normalize_product_id(product_meta["product_id"])
@@ -546,17 +626,46 @@ def run_single_product_training(
         product_meta, product_dir, persist_to_shared_dir=persist_to_shared_dir
     )
 
+    # ① 数据处理 + ② 因子计算（合在 prepare_data 内）
+    print(f"[step 1/4] product={product_id} 数据处理 + 因子计算 ...", flush=True)
     prepared = prepare_data(config_path=config_path, force_rebuild=force_rebuild, config_override=config_override)
+    print(
+        f"[step 1/4] done — n_candidates={len(prepared.feature_cols)} "
+        f"train_rows={len(prepared.train_data)}",
+        flush=True,
+    )
+
+    # ③ 因子筛选（当场算 IC，当场写 per-product registry）
+    print(f"[step 2/4] product={product_id} 因子筛选（walk-forward 月度 IC）...", flush=True)
+    min_abs_ic, min_icir, min_obs_per_window = _load_audit_thresholds(config_path, config_override)
+    registry_path = product_dir / "factor_registry.json"
+    selected_cols, _ = audit_and_filter(
+        prepared=prepared,
+        output_path=registry_path,
+        min_abs_ic=min_abs_ic,
+        min_icir=min_icir,
+        min_obs_per_window=min_obs_per_window,
+    )
+    prepared = _apply_factor_selection(prepared, selected_cols)
+
+    # ④ 模型训练
+    print(f"[step 3/4] product={product_id} 模型训练 (dual-regime LightGBM, n_features={len(prepared.feature_cols)}) ...", flush=True)
     artifact_map, training_summary, _ = train_dual_regime_models(
         prepared=prepared,
         config_path=config_path,
         config_override=config_override,
     )
+    # 训练 importance 仅作元数据回填（不影响过滤决策）
+    backfill_importance(registry_path, _collect_importance(artifact_map))
+    print(f"[step 3/4] done — registry importance 已回填", flush=True)
 
+    # ⑤ 回测
+    print(f"[step 4/4] product={product_id} 回测 ...", flush=True)
     backtest_settings = build_backtest_settings(config_path=config_path, config_override=config_override)
     backtest_artifacts = execute_backtest(prepared=prepared, artifact_map=artifact_map, settings=backtest_settings)
     write_backtest_outputs(backtest_artifacts, backtest_settings)
     save_product_artifacts(product_dir=product_dir, product_meta=product_meta, prepared=prepared, backtest_artifacts=backtest_artifacts)
+    print(f"[step 4/4] done — product_dir={product_dir}", flush=True)
 
     # 写诊断图到 product_dir：覆盖 report.md 章节 1.2 + 1.3 + 1.6 引用的所有图
     # （vol_regime_split / backtest_curve 由 dataset.py / backtest.py 已经自动产出，

@@ -880,22 +880,30 @@ def add_engineered_features(
         "tdate": out[trade_date_col],
     }
 
-    # ── 按设计顺序依次计算（部分组依赖前序组的中间产物，必须按此顺序） ──
-    _add_single_bar_features(out, ctx)              # A
-    _add_window_features(out, ctx)                  # B + C + D 部分
-    _add_time_encoding(out, ctx)                    # E
-    _add_long_window_features(out, ctx)             # G (long-window) + 一致度
-    _add_overnight_intraday(out, ctx)               # F (overnight + intraday)
-    _add_vwap_zscore_signed(out, ctx)               # H (VWAP/Z/signed/Parkinson/tick)
-    _add_oi_features(out, ctx)                      # L (OI / POSITION)
-    _add_synthetic_interactions(out, ctx)           # M (S1-S9 合成交互)
-    _add_minute_level_running(out, ctx)             # F.A (替代 daily_ret 的因果版本)
-    _add_daily_lag_context(out, ctx)                # N (日级 lag 上下文)
-    _add_semivar_consec(out, ctx)                   # K (半方差比 + 连胜)
-    _add_composite_alpha(out, ctx)                  # G2-G5 (复合 alpha + 突破触发)
-    _add_same_minute_history(out, ctx)              # J (跨日同分钟历史先验)
-    _add_candidate_interactions(out, ctx)           # J2 (候选交互)
-    _add_factor_fusion(out, ctx)                    # O (因子融合)
+    # 按设计顺序依次计算（部分组依赖前序组的中间产物，必须按此顺序）。
+    # 每个 helper 通过 out["X"] = ... 逐列插入；累计后 BlockManager 高度碎片化，
+    # 既触发 pandas PerformanceWarning，也拖慢后续列访问。每次 helper 调用后
+    # 做一次 copy() 把同 dtype 的 block 合并，消除告警并让 astype/取列更快。
+    helpers = [
+        _add_single_bar_features,        # A
+        _add_window_features,            # B + C + D 部分
+        _add_time_encoding,              # E
+        _add_long_window_features,       # G long-window + 一致度
+        _add_overnight_intraday,         # F overnight + intraday
+        _add_vwap_zscore_signed,         # H VWAP/Z/signed/Parkinson/tick
+        _add_oi_features,                # L OI / POSITION
+        _add_synthetic_interactions,     # M S1-S9 合成交互
+        _add_minute_level_running,       # F.A 因果版 daily_ret 替代
+        _add_daily_lag_context,          # N 日级 lag 上下文
+        _add_semivar_consec,             # K 半方差比 + 连胜
+        _add_composite_alpha,            # G2-G5 复合 alpha + 突破触发
+        _add_same_minute_history,        # J 跨日同分钟历史先验
+        _add_candidate_interactions,     # J2 候选交互
+        _add_factor_fusion,              # O 因子融合
+    ]
+    for fn in helpers:
+        fn(out, ctx)
+        out = out.copy()
 
     # 消融实验：仅保留 35 项基础 ENG_*
     if not use_synthetic_factors:

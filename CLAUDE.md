@@ -27,8 +27,10 @@ python pipeline/train_products.py --all
 python pipeline/train_products.py --product RB --product CU
 python pipeline/train_products.py --resume-run <run_id>   # only retries non-success entries
 
-# Factor IC × importance audit → updates data/factor_registry.json
-python scripts/audit_factor_ic_importance.py
+# Factor IC audit is no longer a separate command — it's executed inline by
+# train_products.py per product (see pipeline/factor_audit.py). The audit
+# writes results/runs/<run_id>/<PID>/factor_registry.json, which replaces
+# both the old global data/factor_registry.json and per-product feature_manifest.json.
 
 # Rebuild the registry by scanning data/分产品1min主连/
 python pipeline/build_product_registry.py

@@ -145,9 +145,6 @@ def build_data_settings(
     model_cfg = get_section(config, "model")
     factors_cfg = get_section(config, "factors", {})
     runtime_cfg = normalize_runtime_factor_config(get_section(factors_cfg, "runtime", {}))
-    # 因子选择配置（按 train 集 abs IC 排序保留 top_n，剔除低 IC 因子）
-    # 因子注册表配置：data/factor_registry.json，记录每个因子的 use_in_training 标记
-    factor_registry_cfg = get_section(factors_cfg, "registry", {}) if isinstance(factors_cfg, dict) else {}
     product_cfg = get_section(config, "product", {})
     mid_weekly_cfg = get_section(config, "mid_weekly", {})
     derived_cfg = get_section(mid_weekly_cfg, "derived", {}) if isinstance(mid_weekly_cfg, dict) else {}
@@ -271,17 +268,6 @@ def build_data_settings(
         "target_vol_epsilon": float(model_cfg.get("target_vol_epsilon", 1e-8)),
         "target_vol_floor_quantile": float(model_cfg.get("target_vol_floor_quantile", 0.05)),
         "runtime_factors": runtime_cfg,
-        # 因子注册表（JSON 文件路径 + enable 开关）。若 enabled 且 registry 文件存在，
-        # 则在 prepare 中读取每个因子的 mean_ic / icir，按 config 当前阈值即时判定
-        # train / not_train。注册表由 scripts/audit_factor_ic_importance.py 在每次
-        # 训练后用 walk-forward 月度 IC 刷新数值（仅基于 train split，不含 val）。
-        "factor_registry_enabled": bool(factor_registry_cfg.get("enabled", True)) if isinstance(factor_registry_cfg, dict) else True,
-        "factor_registry_path": str(factor_registry_cfg.get("path", "data/factor_registry.json")) if isinstance(factor_registry_cfg, dict) else "data/factor_registry.json",
-        # 因子审计阈值：与 audit script 共用，训练时也按这套阈值即时判定。
-        # 改完 config 不需要单独跑 audit 即可生效（除非要刷新 mean_ic / icir 数值）。
-        # 判定规则（AND 关系）：abs(mean_ic) >= min_abs_ic AND abs(icir) >= min_icir
-        "audit_min_abs_ic": float(get_section(factors_cfg, "audit_thresholds", {}).get("min_abs_ic", 0.005)) if isinstance(factors_cfg, dict) else 0.005,
-        "audit_min_icir": float(get_section(factors_cfg, "audit_thresholds", {}).get("min_icir", 0.3)) if isinstance(factors_cfg, dict) else 0.3,
     }
 
 
@@ -800,11 +786,13 @@ class FactorDatasetBuilder:
                         merged.loc[stale_mask, derived_cols_file] = np.nan
 
             # AVAILABLE dummies reflect the post-clamp notna status on each level column.
-            if available_dummy:
-                for col in file_level_cols:
-                    a_col = f"{col}_AVAILABLE"
-                    merged[a_col] = merged[col].notna().astype("int8")
-                    available_cols_all.append(a_col)
+            # Build all dummies at once and concat to avoid DataFrame fragmentation.
+            if available_dummy and file_level_cols:
+                a_cols = [f"{col}_AVAILABLE" for col in file_level_cols]
+                avail_df = merged[file_level_cols].notna().astype("int8")
+                avail_df.columns = a_cols
+                merged = pd.concat([merged, avail_df], axis=1, copy=False)
+                available_cols_all.extend(a_cols)
 
             # Drop arrival helper (one per file; we no longer need it after clamping).
             merged = merged.drop(columns=[arrival_col], errors="ignore")
@@ -1100,90 +1088,10 @@ class FactorDatasetBuilder:
         if not usable_feature_cols:
             raise ValueError("All feature columns were removed by train-set variance filtering.")
 
-        # ── 基于 factor_registry.json 的因子选择（运行时按 config 阈值即时判定）──
-        # registry 由 scripts/audit_factor_ic_importance.py 维护，记录每个因子在
-        # train split 上的 walk-forward 月度 IC 统计：mean_ic / std_ic / icir。
-        # 训练时按当前 config.yaml::factors.audit_thresholds 阈值即时判定 train / not_train，
-        # 改完 config 不必重跑 audit 即可生效。判定规则（AND 关系，与 audit 脚本一致）：
-        #   abs(mean_ic) ≥ min_abs_ic  AND  abs(icir) ≥ min_icir  → keep
-        # 不在 registry 中的新因子默认保留（首次审计前不会被无故 drop）。
-        # importance_gain 不参与判定（仅作元数据 / 章节图展示用）。
-        if self.settings.get("factor_registry_enabled", False):
-            registry_path_raw = self.settings.get("factor_registry_path") or "data/factor_registry.json"
-            registry_path = Path(registry_path_raw)
-            if not registry_path.is_absolute():
-                registry_path = (PROJECT_ROOT / registry_path_raw).resolve()
-            if registry_path.exists():
-                try:
-                    registry = json.loads(registry_path.read_text(encoding="utf-8"))
-                    min_abs_ic = float(self.settings.get("audit_min_abs_ic", 0.005))
-                    min_icir = float(self.settings.get("audit_min_icir", 0.3))
-
-                    # 把 registry 的所有因子整合成 name → metrics（兼容新旧 schema）
-                    name_to_metrics: dict[str, dict[str, float]] = {}
-                    buckets = ("train_factor", "not_train_factor")
-                    if any(b in registry for b in buckets):
-                        for bucket in buckets:
-                            for f in registry.get(bucket, []):
-                                name = str(f.get("name", ""))
-                                if not name:
-                                    continue
-                                # mean_ic 优先，缺失则退回旧字段 abs_ic（无符号）
-                                mean_ic = float(f.get("mean_ic", f.get("abs_ic", 0.0)))
-                                icir = float(f.get("icir", 0.0))
-                                n_windows = int(f.get("n_windows", 0))
-                                name_to_metrics[name] = {
-                                    "mean_ic": mean_ic,
-                                    "icir": icir,
-                                    "n_windows": n_windows,
-                                }
-                    else:
-                        for f in registry.get("factors", []):
-                            name = str(f.get("name", ""))
-                            if not name:
-                                continue
-                            mean_ic = float(f.get("mean_ic", f.get("abs_ic", 0.0)))
-                            icir = float(f.get("icir", 0.0))
-                            n_windows = int(f.get("n_windows", 0))
-                            name_to_metrics[name] = {
-                                "mean_ic": mean_ic,
-                                "icir": icir,
-                                "n_windows": n_windows,
-                            }
-
-                    if name_to_metrics:
-                        before = len(usable_feature_cols)
-                        kept: list[str] = []
-                        for col in usable_feature_cols:
-                            metrics = name_to_metrics.get(col)
-                            # 不在 registry 的新因子默认保留
-                            if metrics is None:
-                                kept.append(col)
-                                continue
-                            # n_windows < 3 视为统计样本不足，无法判定 → 保留（保守）
-                            if metrics["n_windows"] < 3:
-                                kept.append(col)
-                                continue
-                            if (
-                                abs(metrics["mean_ic"]) >= min_abs_ic
-                                and abs(metrics["icir"]) >= min_icir
-                            ):
-                                kept.append(col)
-                        usable_feature_cols = kept
-                        after = len(usable_feature_cols)
-                        n_skipped = before - after
-                        if n_skipped > 0:
-                            print(
-                                f"[factor_registry] skip {n_skipped} factors via runtime thresholds "
-                                f"(min_abs_ic={min_abs_ic}, min_icir={min_icir}); "
-                                f"kept {after}/{before}"
-                            )
-                except Exception as exc:
-                    warnings.warn(
-                        f"[factor_registry] failed to load {registry_path}: {exc}; skipping registry filter.",
-                        RuntimeWarning,
-                        stacklevel=2,
-                    )
+        # 因子筛选已外置到 pipeline/factor_audit.py，并由 train_products.py 在
+        # prepare_data 之后、模型训练之前调用。本函数只负责返回**所有候选因子**，
+        # 让外部对当前产品的 train_data 即时计算 IC、写 per-product registry、
+        # 最终再把 selected 列下发给 modeling。
 
         # Fill NaN in MID_* columns with 0.0 so dropna(required_cols) doesn't
         # kill rows for pre-arrival / stale-clamped windows. The companion
