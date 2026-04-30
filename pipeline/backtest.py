@@ -72,6 +72,7 @@ def build_backtest_settings(
     )
     signal_cfg = get_section(config, "signal")
     backtest_cfg = get_section(config, "backtest")
+    model_cfg = get_section(config, "model")
     return {
         "paths": paths,
         "signal_col": str(signal_cfg.get("signal_col", "pred_return")),
@@ -93,6 +94,7 @@ def build_backtest_settings(
         "annualization_days": int(backtest_cfg.get("annualization_days", 250)),
         "flatten_at_day_end": bool(backtest_cfg.get("flatten_at_day_end", True)),
         "save_prediction_table": bool(backtest_cfg.get("save_prediction_table", False)),
+        "min_regime_val_ic": float(model_cfg.get("min_regime_val_ic", -0.01)),
     }
 
 
@@ -176,6 +178,18 @@ def generate_positions(
         rules = rule_map.get(regime_label)
         if rules is None:
             raise ValueError(f"Missing signal rules for regime_label={regime_label}")
+
+        if rules.get("degenerate", False):
+            if current_position != 0:
+                current_position = 0
+                hold_bars = 0
+                cooldown = 0
+                confirm_side = 0
+                confirm_count = 0
+            positions.append(0)
+            raw_signals.append(0)
+            actions.append("regime_quality_skip")
+            continue
 
         pred_value = float(getattr(row, settings["signal_col"]))
         entry_threshold = float(rules["effective_entry_threshold"])
@@ -676,6 +690,11 @@ def execute_backtest(
     test_pred = predict_dual_regime(prepared.test_data, prepared.feature_cols, prepared.target_col, artifact_map)
 
     rule_map = build_signal_rule_map(val_pred, settings)
+
+    min_ic = settings.get("min_regime_val_ic", -0.01)
+    for label, artifact in artifact_map.items():
+        if label in rule_map and artifact.val_spearman_ic < min_ic:
+            rule_map[label]["degenerate"] = True
 
     val_position = generate_positions(val_pred, rule_map, settings)
     test_position = generate_positions(test_pred, rule_map, settings)

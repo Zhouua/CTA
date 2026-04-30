@@ -42,7 +42,9 @@ STAT_KEYS = {
 
 
 def _load_summary(run_dir: Path) -> pd.DataFrame:
-    df = pd.read_csv(run_dir / "run_summary.csv")
+    path = run_dir / "run_summary.json"
+    records = json.loads(path.read_text(encoding="utf-8"))
+    df = pd.DataFrame(records)
     return df[df["status"] == "success"].copy()
 
 

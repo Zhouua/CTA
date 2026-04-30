@@ -35,12 +35,45 @@ data:
   force_rebuild_cache: false
   use_engineered_features: true
   use_synthetic_factors: true
-  use_mid_weekly: false        # 是否启用中观因子
+  use_mid_weekly: true        # 是否启用中观因子
   mid_alignment: asof_forward_fill
   engineered_windows:
     short: 5
     medium: 20
     long: 60
+
+vol_split:
+  window: 20
+  vol_percentage: 0.65 # 通过python scripts/exp_pure_micro_horizon_cutoff.py 实践比较获得
+  label_train_only: false
+  regime_label_source: daily
+  split_granularity: month
+  min_train_rows_per_regime: 20000
+
+factors:
+  runtime:
+    enabled: true
+    windows: [5, 10, 20, 30, 60]
+    lags: [0, 1, 2, 3, 4]
+    groups:
+      - price_lags
+      - kline
+      - trend
+      - volatility
+      - direction
+      - volume
+      - correlation
+    cache_generated_features: true
+  audit_thresholds:
+    # 因子筛选阈值，由 pipeline/factor_audit.py 在每个产品训练时即时判定。
+    # 流程：数据处理 → 因子计算 → 因子筛选(当场算IC) → 模型训练 → 回测。
+    # 数据源：当前产品 train split 按月切窗算 Spearman IC，聚合为 mean_ic/std_ic/icir。
+    # 判定规则（AND）：abs(mean_ic) >= min_abs_ic AND abs(icir) >= min_icir AND n_windows >= 3
+    # 结果当场写入 results/runs/<run_id>/<PID>/factor_registry.json（per-product，
+    # 取代旧的全局 data/factor_registry.json + feature_manifest.json）。
+    min_abs_ic: 0.005              # |mean_ic| 下限
+    min_icir: 0.3                  # |ICIR| 下限（mean_ic / std_ic，跨月稳定性）
+    min_obs_per_window: 200        # 单月样本下限，少于则该月跳过该因子
 
 mid_weekly:
   available_dummy: true            # emit MID_*_AVAILABLE int8 per level column
@@ -93,39 +126,6 @@ batch_training:
   required_data_start: 2021-01-01
   required_data_end: 2025-01-01
 
-factors:
-  runtime:
-    enabled: true
-    windows: [5, 10, 20, 30, 60]
-    lags: [0, 1, 2, 3, 4]
-    groups:
-      - price_lags
-      - kline
-      - trend
-      - volatility
-      - direction
-      - volume
-      - correlation
-    cache_generated_features: true
-  audit_thresholds:
-    # 因子筛选阈值，由 pipeline/factor_audit.py 在每个产品训练时即时判定。
-    # 流程：数据处理 → 因子计算 → 因子筛选(当场算IC) → 模型训练 → 回测。
-    # 数据源：当前产品 train split 按月切窗算 Spearman IC，聚合为 mean_ic/std_ic/icir。
-    # 判定规则（AND）：abs(mean_ic) >= min_abs_ic AND abs(icir) >= min_icir AND n_windows >= 3
-    # 结果当场写入 results/runs/<run_id>/<PID>/factor_registry.json（per-product，
-    # 取代旧的全局 data/factor_registry.json + feature_manifest.json）。
-    min_abs_ic: 0.005              # |mean_ic| 下限
-    min_icir: 0.3                  # |ICIR| 下限（mean_ic / std_ic，跨月稳定性）
-    min_obs_per_window: 200        # 单月样本下限，少于则该月跳过该因子
-
-vol_split:
-  window: 20
-  vol_percentage: 0.65 # 通过python scripts/exp_pure_micro_horizon_cutoff.py 实践比较获得
-  label_train_only: false
-  regime_label_source: daily
-  split_granularity: month
-  min_train_rows_per_regime: 20000
-
 model:
   target_column: target_vol_norm
   scale_method: robust
@@ -136,6 +136,7 @@ model:
   early_stopping_rounds: 50
   feature_importance_top_n: 20
   persist_models: true
+  min_regime_val_ic: -0.01  # regime quality gate: val spearman IC below this → position=0 for that regime
   common_params:
     objective: regression
     metric: l2

@@ -41,6 +41,7 @@ class RegimeModelArtifact:
     training_history: dict[str, Any]
     feature_importance: pd.DataFrame
     metrics: dict[str, Any]
+    val_spearman_ic: float = 0.0  # regime quality gate — set at training time from val_metrics
 
 
 def _to_native(value: Any) -> Any:
@@ -284,6 +285,7 @@ def train_single_regime_model(
         training_history=evals_result,
         feature_importance=feature_importance,
         metrics=_to_native(metrics),
+        val_spearman_ic=float(metrics["val_metrics"].get("spearman_ic", 0.0)),
     )
 
 

@@ -171,7 +171,11 @@ def build_data_settings(
         runtime_cfg=runtime_cfg,
         use_engineered_features=bool(data_cfg.get("use_engineered_features", True)),
         target_horizon=int(data_cfg.get("target_horizon", 5)),
-        mid_weekly_files=list(product_cfg.get("mid_weekly_files", [])),
+        mid_weekly_files=(
+            list(product_cfg.get("mid_weekly_files", []))
+            if bool(data_cfg.get("use_mid_weekly", True))
+            else []
+        ),
         mid_weekly_filter_spec=mw_filter_spec,
     )
 

@@ -311,6 +311,8 @@ def summarize_product_run(
         "product_dir": str(product_dir),
         "training_summary_path": str(product_dir / "training_summary.json"),
         "backtest_summary_path": str(product_dir / "backtest_summary.json"),
+        "daily_returns_path": str(product_dir / "daily_returns.csv"),
+        "nav_curve_path": str(product_dir / "nav_curve.csv"),
     }
 
 
