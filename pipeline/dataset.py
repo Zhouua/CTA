@@ -857,6 +857,22 @@ class FactorDatasetBuilder:
             floor_value = float(np.nanquantile(finite_scale, floor_quantile))
         prepared["target_vol_scale"] = np.maximum(target_vol_scale, floor_value).astype("float32")
         prepared["target_vol_norm"] = (prepared["future_return"] / (prepared["target_vol_scale"] + eps)).astype("float32")
+
+        # 策略B target: 同日内未来 horizon 根 bar 的价格极值（不跨日）
+        # 把 horizon 次 shift 拼成宽表，逐行取 max/min，避免逐行循环
+        future_closes = pd.concat(
+            [prepared.groupby(self.trade_date_col, dropna=False)["CLOSE"].shift(-k)
+             for k in range(1, horizon + 1)],
+            axis=1,
+        )
+        future_max_ret = (future_closes.max(axis=1) / prepared["CLOSE"] - 1.0).astype("float32")
+        future_min_ret = (future_closes.min(axis=1) / prepared["CLOSE"] - 1.0).astype("float32")
+        # 绝对幅度更大的方向为该 bar 的有符号极值目标
+        signed_extreme = np.where(
+            np.abs(future_max_ret) >= np.abs(future_min_ret), future_max_ret, future_min_ret
+        )
+        prepared["target_extreme_norm"] = (signed_extreme / (prepared["target_vol_scale"] + eps)).astype("float32")
+
         prepared["5min_return"] = np.log(
             prepared.groupby(self.trade_date_col, dropna=False)["CLOSE"].shift(-5) / prepared["CLOSE"]
         ).astype("float32")

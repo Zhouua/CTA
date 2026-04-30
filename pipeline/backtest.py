@@ -88,6 +88,8 @@ def build_backtest_settings(
         "round_trip_turnover": float(signal_cfg.get("round_trip_turnover", 2.0)),
         "cost_filter_multiple": float(signal_cfg.get("cost_filter_multiple", 1.2)),
         "min_expected_edge": float(signal_cfg.get("min_expected_edge", 0.0)),
+        "exit_mode": str(signal_cfg.get("exit_mode", "quantile")),
+        "tp_fraction": float(signal_cfg.get("tp_fraction", 1.0)),
         "commission_rate": float(backtest_cfg.get("commission_rate", 0.0001)),
         "slippage_rate": float(backtest_cfg.get("slippage_rate", 0.0001)),
         "hold_to_next_bar": bool(backtest_cfg.get("hold_to_next_bar", True)),
@@ -172,6 +174,8 @@ def generate_positions(
     cooldown = 0
     confirm_side = 0
     confirm_count = 0
+    entry_price: float = 0.0          # 策略B: 记录开仓价，用于计算持仓盈亏
+    entry_pred_extreme: float = 0.0   # 策略B: 记录入场时的预测极值目标（已反归一化）
 
     for row in df.itertuples(index=False):
         regime_label = int(row.REGIME_LABEL)
@@ -201,7 +205,12 @@ def generate_positions(
             raw_signal = -1
 
         action = "hold_flat" if current_position == 0 else "hold_position"
-        exit_signal = abs(pred_value) <= exit_threshold
+        if settings["exit_mode"] == "target_hit" and entry_price > 0:
+            # 策略B: 持仓盈亏 >= tp_fraction × |pred_extreme| 则止盈
+            pnl = current_position * (float(row.CLOSE) / entry_price - 1.0)
+            exit_signal = pnl >= settings["tp_fraction"] * abs(entry_pred_extreme)
+        else:
+            exit_signal = abs(pred_value) <= exit_threshold
 
         if current_position == 0:
             if cooldown > 0:
@@ -218,6 +227,9 @@ def generate_positions(
                     confirm_side = 0
                     confirm_count = 0
                     action = "open_long" if raw_signal > 0 else "open_short"
+                    # 策略B: 记录入场信息，用于 target_hit 止盈判断
+                    entry_price = float(row.CLOSE)
+                    entry_pred_extreme = pred_value
                 else:
                     action = "wait_confirm"
             else:
@@ -234,6 +246,8 @@ def generate_positions(
                 cooldown = int(rules["cooldown_bars"])
                 confirm_side = 0
                 confirm_count = 0
+                entry_price = 0.0
+                entry_pred_extreme = 0.0
                 action = "exit_to_flat"
             elif can_exit and reverse_signal:
                 if bool(rules["allow_direct_flip"]):
@@ -242,6 +256,9 @@ def generate_positions(
                     cooldown = 0
                     confirm_side = 0
                     confirm_count = 0
+                    # 直接反手：用新方向的入场信息覆盖
+                    entry_price = float(row.CLOSE)
+                    entry_pred_extreme = pred_value
                     action = "flip"
                 elif bool(rules["flip_to_flat_first"]):
                     current_position = 0
@@ -249,6 +266,8 @@ def generate_positions(
                     cooldown = int(rules["cooldown_bars"])
                     confirm_side = raw_signal
                     confirm_count = 1
+                    entry_price = 0.0
+                    entry_pred_extreme = 0.0
                     action = "flatten_before_flip"
 
         if bool(settings["flatten_at_day_end"]) and bool(row.is_day_end):
@@ -258,6 +277,8 @@ def generate_positions(
                 cooldown = 0
                 confirm_side = 0
                 confirm_count = 0
+                entry_price = 0.0
+                entry_pred_extreme = 0.0
                 action = "day_end_flat"
             else:
                 confirm_side = 0

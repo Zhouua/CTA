@@ -172,6 +172,9 @@ signal:
   round_trip_turnover: 2.0
   cost_filter_multiple: 0.9
   min_expected_edge: 0.0
+  # 策略B: 切换方式 exit_mode: target_hit + model.target_column: target_extreme_norm
+  exit_mode: quantile      # quantile(当前) | target_hit(价格触达预测极值止盈)
+  tp_fraction: 1.0         # 止盈目标 = tp_fraction × |pred_extreme|
 
 backtest:
   commission_rate: 0.0001
