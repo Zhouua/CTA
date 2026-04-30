@@ -161,7 +161,7 @@ model:
 signal:
   signal_col: pred_return
   threshold_mode: quantile
-  entry_quantile: 0.88
+  entry_quantile: 0.92
   exit_quantile: 0.4
   confirmation_bars: 2
   min_hold_bars: 10           # 与 target_horizon=60 协调，避免持仓时长 << 预测视野
