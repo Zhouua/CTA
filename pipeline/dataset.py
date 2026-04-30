@@ -330,6 +330,20 @@ class FactorDatasetBuilder:
         for col in numeric_candidates:
             if col in raw.columns:
                 raw[col] = pd.to_numeric(raw[col], errors="coerce").astype("float64")
+
+        # 数据源偶发脏数据：OHLC=0 但 VOLUME/AMOUNT 非零，用前值填充
+        price_cols = [c for c in ("OPEN", "HIGH", "LOW", "CLOSE") if c in raw.columns]
+        if price_cols:
+            mask = (raw[price_cols] <= 0).any(axis=1)
+            if mask.any():
+                import warnings as _w
+                _w.warn(
+                    f"[dataset] {mask.sum()} bar(s) with OHLC<=0 found; forward-filling price.",
+                    RuntimeWarning, stacklevel=2,
+                )
+                raw.loc[mask, price_cols] = np.nan
+                raw[price_cols] = raw[price_cols].ffill()
+
         return raw
 
     def _discover_factor_files(self) -> list[Path]:
