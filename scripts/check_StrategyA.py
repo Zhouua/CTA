@@ -74,7 +74,7 @@ def _i(v):
 # ─────────────────────────────────────────────
 
 def _train_and_backtest(prepared, alpha: float, config_path: str, config_override: dict) -> dict:
-    from modeling import train_dual_regime_models
+    from modeling import train_dual_regime_models, REGIME_NAME_MAP
     from backtest import build_backtest_settings, execute_backtest
 
     # 深拷贝避免多个 alpha 调用间互相污染
@@ -86,9 +86,28 @@ def _train_and_backtest(prepared, alpha: float, config_path: str, config_overrid
         config_path=config_path,
         config_override=override,
     )
+
+    # 把每个 regime 的 val_IC 带出来，用于诊断 quality gate 是否触发
+    val_ics = {
+        REGIME_NAME_MAP[label]: round(float(art.val_spearman_ic), 4)
+        for label, art in artifact_map.items()
+    }
+
     settings = build_backtest_settings(config_path=config_path, config_override=override)
+    min_ic = settings.get("min_regime_val_ic", -0.01)
+
     arts = execute_backtest(prepared=prepared, artifact_map=artifact_map, settings=settings)
-    return _extract_metrics(arts.summary)
+    metrics = _extract_metrics(arts.summary)
+    metrics["val_ics"] = val_ics
+
+    # 打印触发 quality gate 的 regime，方便即时诊断
+    degenerate = [name for name, ic in val_ics.items() if ic < min_ic]
+    if degenerate:
+        print(
+            f"    [quality gate] {', '.join(degenerate)} val_IC < {min_ic} → position=0",
+            flush=True,
+        )
+    return metrics
 
 
 # ─────────────────────────────────────────────
@@ -137,7 +156,8 @@ def _run_for_product(
     baseline = _train_and_backtest(prepared, 0.0, config_path, config_override)
     print(
         f"  [{product_id}] baseline done ({time.time()-t0:.0f}s)  "
-        f"net={_pct(baseline['annual_return'])}  sharpe={_f2(baseline['sharpe'])}",
+        f"net={_pct(baseline['annual_return'])}  sharpe={_f2(baseline['sharpe'])}  "
+        f"val_ic={baseline['val_ics']}",
         flush=True,
     )
 
@@ -147,7 +167,8 @@ def _run_for_product(
     strategy_a = _train_and_backtest(prepared, candidate_alpha, config_path, config_override)
     print(
         f"  [{product_id}] strategy_a done ({time.time()-t0:.0f}s)  "
-        f"net={_pct(strategy_a['annual_return'])}  sharpe={_f2(strategy_a['sharpe'])}",
+        f"net={_pct(strategy_a['annual_return'])}  sharpe={_f2(strategy_a['sharpe'])}  "
+        f"val_ic={strategy_a['val_ics']}",
         flush=True,
     )
 
@@ -166,10 +187,20 @@ def _write_comparison(run_dir: Path, rows: list[dict], candidate_alpha: float) -
     lines = [
         f"# check_strategy_a — baseline (alpha=0) vs strategy_a (alpha={candidate_alpha})\n",
         "共享 prepare_data + factor_audit；仅训练 sample weight 不同。\n",
+        "> ⚠️ val_IC 列为 low_vol/high_vol regime 的验证集 Spearman IC；任意 regime < -0.01 → quality gate 触发，trades=0。\n",
         "| product | baseline net | strategy_a net | baseline sharpe | strategy_a sharpe "
-        "| baseline IC | strategy_a IC | baseline trades | strategy_a trades |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| baseline IC | strategy_a IC | baseline trades | strategy_a trades "
+        "| baseline val_IC (lv/hv) | strategy_a val_IC (lv/hv) |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|",
     ]
+
+    def _val_ic_str(m: dict) -> str:
+        ics = m.get("val_ics") or {}
+        lv = ics.get("low_vol")
+        hv = ics.get("high_vol")
+        lv_s = f"{lv:+.4f}" if isinstance(lv, float) else "—"
+        hv_s = f"{hv:+.4f}" if isinstance(hv, float) else "—"
+        return f"{lv_s} / {hv_s}"
 
     def _row(pid, b, c):
         return (
@@ -177,7 +208,8 @@ def _write_comparison(run_dir: Path, rows: list[dict], candidate_alpha: float) -
             f"| {_pct(b.get('annual_return'))} | {_pct(c.get('annual_return'))} "
             f"| {_f2(b.get('sharpe'))} | {_f2(c.get('sharpe'))} "
             f"| {_f4(b.get('spearman_ic'))} | {_f4(c.get('spearman_ic'))} "
-            f"| {_i(b.get('trade_count'))} | {_i(c.get('trade_count'))} |"
+            f"| {_i(b.get('trade_count'))} | {_i(c.get('trade_count'))} "
+            f"| {_val_ic_str(b)} | {_val_ic_str(c)} |"
         )
 
     ok_rows = [r for r in rows if "baseline" in r and "strategy_a" in r]
