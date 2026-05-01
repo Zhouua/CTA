@@ -814,6 +814,7 @@ def resolve_selection_from_args(
     explicit_products: list[str],
     run_all: bool,
     existing_manifest: dict[str, Any],
+    existing_results: list[dict[str, Any]] | None = None,
 ) -> tuple[list[str], list[str], bool]:
     normalized_products = [_normalize_product_id(item) for item in explicit_products]
     if run_all or normalized_products:
@@ -830,7 +831,12 @@ def resolve_selection_from_args(
     if prior_requested:
         normalized_requested = [_normalize_product_id(item) for item in prior_requested]
         return prior_requested, normalized_requested, False
-    raise SystemExit("Pass --all or at least one --product, or provide --resume-run with an existing manifest.json.")
+    # manifest.json missing (removed in current version) — fall back to run_summary.json product list
+    if existing_results:
+        inferred = [_normalize_product_id(r["product_id"]) for r in existing_results if r.get("product_id")]
+        if inferred:
+            return inferred, inferred, False
+    raise SystemExit("Pass --all or at least one --product, or provide --resume-run with an existing run_summary.json.")
 
 
 def split_resume_products(
@@ -1072,6 +1078,7 @@ if __name__ == "__main__":
         explicit_products=args.product,
         run_all=args.all,
         existing_manifest=existing_manifest,
+        existing_results=existing_results,
     )
 
     registry = load_product_registry(config_path=args.config)
