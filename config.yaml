@@ -35,7 +35,7 @@ data:
   force_rebuild_cache: false
   use_engineered_features: true
   use_synthetic_factors: true
-  use_mid_weekly: false        # 是否启用中观因子
+  use_mid_weekly: true         # 是否启用中观因子
   mid_alignment: asof_forward_fill
   engineered_windows:
     short: 5
@@ -82,6 +82,8 @@ factors:
     weekly:                        # Tier C：周/月频中观。周度季度窗口，~13 obs/窗口。
       min_abs_ic: 0.030
       min_icir: 0.40
+      max_icir: 0.90               # 上限：季度窗口 ~14 窗口下 |ICIR|>0.9 通常是制度特定过拟合
+                                   # （如 PB 铅价单边行情 2021-2023 → 2024 反转失效）
       min_obs_per_window: 8
       max_raw_features: 6          # 每品种通过的原始指标上限（按 |ICIR| 取 top-N）
     val_consistency:
@@ -91,6 +93,9 @@ factors:
       daily_min_retention: 0.40
       weekly_min_retention: 0.35
     midxmicro_max_per_product: 15  # MIDxMICRO 不做独立 IC 审计；靠父因子门 + 硬上限
+    max_mid_total_per_product: 8   # Tier C + MIDxMICRO 合计上限（按 |ICIR| 取 top-N）
+                                   # 防止：①多个高 ICIR 同向特征过度主导模型 → pred_std 塌陷
+                                   #       ②大量派生特征膨胀 pred_std → 交易次数爆炸
 
 mid_weekly:
   available_dummy: true            # emit MID_*_AVAILABLE int8 per level column

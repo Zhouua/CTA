@@ -311,6 +311,7 @@ def _audit_mid_tier(
     """
     min_abs_ic = float(tier_cfg.get("min_abs_ic", 0.015))
     min_icir = float(tier_cfg.get("min_icir", 0.40))
+    max_icir = float(tier_cfg.get("max_icir", float("inf")))  # 上限：防制度特定过拟合
     min_obs = int(tier_cfg.get("min_obs_per_window", 15))
     window_period = "M" if period == "day" else "Q"
     retention = float(val_cfg.get(
@@ -358,10 +359,11 @@ def _audit_mid_tier(
         n_windows = int(ic_df.at[col, "n_windows"])
         val_ic = val_ics.get(col, float("nan"))
 
-        # Tier 通过条件
+        # Tier 通过条件（min_icir ≤ |ICIR| ≤ max_icir）
         passes_threshold = (
             abs(mean_ic) >= min_abs_ic
             and abs(icir) >= min_icir
+            and abs(icir) <= max_icir
             and n_windows >= 3
         )
         # val 一致性：NaN 时跳过检验（不惩罚）
@@ -667,6 +669,28 @@ def audit_and_filter(
         else:
             skip_records.append(rec)
 
+    # ── 全局中观总量上限：Tier C + MIDxMICRO 合计 ≤ max_mid_total_per_product ──
+    # 防止多个高ICIR同向特征合力主导模型 → pred_std 塌陷（M案例）
+    # 或大量派生特征膨胀信号分布 → 交易次数爆炸（PB案例）
+    if mid_audit_cfg:
+        max_mid_total = int(mid_audit_cfg.get("max_mid_total_per_product", 999))
+        mid_train = [r for r in train_records if r.get("audit_tier") in ("B", "C", "MIDxMICRO")]
+        if len(mid_train) > max_mid_total:
+            # 按 |ICIR| 降序，保留 top-N
+            mid_train_sorted = sorted(mid_train, key=lambda r: -abs(float(r.get("icir", 0.0))))
+            keep_set = {r["name"] for r in mid_train_sorted[:max_mid_total]}
+            trimmed: list[dict[str, Any]] = []
+            for r in train_records:
+                if r.get("audit_tier") in ("B", "C", "MIDxMICRO") and r["name"] not in keep_set:
+                    r = dict(r)
+                    r["use_in_training"] = False
+                    r["reason"] = "mid_total_cap"
+                    skip_records.append(r)
+                else:
+                    trimmed.append(r)
+            train_records = trimmed
+            selected = [r["name"] for r in train_records]
+
     def _sort_key(r: dict) -> tuple[float, float]:
         return (-abs(float(r.get("icir", 0.0))), -abs(float(r.get("mean_ic", 0.0))))
 
@@ -791,12 +815,15 @@ def _mid_skip_reasons(
     tier_cfg = mid_audit_cfg.get(tier_key, {})
     min_abs_ic = float(tier_cfg.get("min_abs_ic", 0.015))
     min_icir = float(tier_cfg.get("min_icir", 0.40))
+    max_icir = float(tier_cfg.get("max_icir", float("inf")))
     if n_windows < 3:
         reasons.append("n_windows<3")
     if abs(mean_ic) < min_abs_ic:
         reasons.append(f"|mean_ic|<{min_abs_ic}(Tier{tier})")
     if abs(icir) < min_icir:
         reasons.append(f"|icir|<{min_icir}(Tier{tier})")
+    if abs(icir) > max_icir:
+        reasons.append(f"|icir|>{max_icir}(Tier{tier},overfit_guard)")
     if not val_passes:
         reasons.append("val_consistency_fail")
     return reasons
