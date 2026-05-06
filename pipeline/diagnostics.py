@@ -17,10 +17,8 @@
     - factor_top20_model_importance_low_vol.png  — LightGBM low_vol 模型 Top 20 Gain
     - factor_top20_model_importance_high_vol.png — LightGBM high_vol 模型 Top 20 Gain
 
-  说明：章节 1.4 vol_regime_split.png 已由 pipeline/dataset.py 通过
-        dataloader.splitByVol.plot_5min_return_by_vol 自动写入 paths.regime_plot；
-        章节 1.6 backtest_curve.png 已由 pipeline/backtest.py 自动写入 backtest_plot。
-        本模块不重复生成上述两张。
+  说明：章节 1.6 backtest_curve.png 已由 pipeline/backtest.py 自动写入 backtest_plot。
+        本模块不重复生成。
 
 接口设计：直接接受内存里的 PreparedData + artifact_map，不依赖任何磁盘硬编码路径。
 失败时只打印警告，不抛出异常 —— 训练 / 回测主流程不会因为画图失败而中断。
@@ -384,7 +382,10 @@ def _compute_train_ic(prepared: Any) -> dict[str, float]:
         idx = x.index.intersection(y.index)
         if len(idx) < 1000:
             continue
-        v = float(x.loc[idx].corr(y.loc[idx]))
+        xi, yi = x.loc[idx], y.loc[idx]
+        if xi.std() == 0 or yi.std() == 0:
+            continue
+        v = float(xi.corr(yi))
         if not np.isnan(v):
             ic[feat] = v
     return ic
@@ -410,7 +411,10 @@ def _compute_monthly_ic(prepared: Any, ic_dict: dict[str, float]) -> tuple[list[
             idx = x.index.intersection(y.index)
             if len(idx) < 200:
                 continue
-            v = float(x.loc[idx].corr(y.loc[idx]))
+            xi, yi = x.loc[idx], y.loc[idx]
+            if xi.std() == 0 or yi.std() == 0:
+                continue
+            v = float(xi.corr(yi))
             if not np.isnan(v):
                 ics.append(abs(v))
         if ics:

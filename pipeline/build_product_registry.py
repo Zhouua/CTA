@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import argparse
-import csv
 import json
 import sys
 from pathlib import Path
 from typing import Any
+
+import pandas as pd
 
 CURRENT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = CURRENT_DIR.parent
@@ -28,8 +29,8 @@ def _canonical_priority(path: Path) -> tuple[int, str]:
     return order.get(suffix, 2), path.name
 
 
-def _infer_product_id(filename: str, row: dict[str, str]) -> str:
-    product = (row.get("product") or "").strip().upper()
+def _infer_product_id(filename: str, product_value: str) -> str:
+    product = (product_value or "").strip().upper()
     if product:
         return product
 
@@ -41,34 +42,44 @@ def _infer_product_id(filename: str, row: dict[str, str]) -> str:
 
 
 def _scan_single_csv(path: Path) -> dict[str, Any] | None:
-    with path.open("r", encoding="utf-8", newline="") as f:
-        reader = csv.DictReader(f)
-        if "TDATE" not in (reader.fieldnames or []):
-            return None
-
-        first_row: dict[str, str] | None = None
-        last_row: dict[str, str] | None = None
-        row_count = 0
-        for row in reader:
-            row_count += 1
-            if first_row is None:
-                first_row = row
-            last_row = row
-
-    if first_row is None or last_row is None:
+    # 先读 header 一行确定有哪些列，再用 list-based usecols（C-engine 走 zero-copy
+    # 列裁剪，比 callable usecols 快 10×）。dtype 用最窄的可读类型，避免 dtype=str
+    # 让 C-engine 退化到对象数组。
+    try:
+        head = pd.read_csv(path, nrows=0)
+    except Exception:
+        return None
+    cols_in_file = [c for c in ("TDATE", "VOLUME", "CODE", "product") if c in head.columns]
+    if "TDATE" not in cols_in_file:
         return None
 
-    product_id = _infer_product_id(path.name, first_row)
-    instrument_code = (last_row.get("CODE") or first_row.get("CODE") or path.stem).strip().upper()
+    df = pd.read_csv(path, usecols=cols_in_file, low_memory=False)
+    if df.empty:
+        return None
+
+    row_count = int(len(df))
+    if "VOLUME" in df.columns and row_count > 0:
+        vol = pd.to_numeric(df["VOLUME"], errors="coerce").fillna(0.0)
+        zero_volume_ratio = float((vol == 0.0).sum() / row_count)
+    else:
+        zero_volume_ratio = None
+
+    first_product = str(df["product"].iloc[0]) if "product" in df.columns else ""
+    last_code = str(df["CODE"].iloc[-1]) if "CODE" in df.columns else ""
+    first_code = str(df["CODE"].iloc[0]) if "CODE" in df.columns else ""
+
+    product_id = _infer_product_id(path.name, first_product)
+    instrument_code = (last_code or first_code or path.stem).strip().upper()
     exchange = instrument_code.rsplit(".", 1)[-1] if "." in instrument_code else path.stem.rsplit(".", 1)[-1].upper()
     return {
         "product_id": product_id,
         "instrument_code": instrument_code,
         "exchange": exchange,
         "raw_data_file": path.name,
-        "data_start": first_row.get("TDATE"),
-        "data_end": last_row.get("TDATE"),
+        "data_start": str(df["TDATE"].iloc[0]),
+        "data_end": str(df["TDATE"].iloc[-1]),
         "row_count": row_count,
+        "zero_volume_ratio": zero_volume_ratio,
         "aliases": [path.name],
     }
 

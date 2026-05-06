@@ -222,11 +222,15 @@ def _write_comparison(run_dir: Path, rows: list[dict]) -> None:
 
 def _load_registry(config_path: str | None) -> dict[str, dict]:
     from config_utils import get_section, load_project_config, resolve_paths
+    from train_products import annotate_products_for_batch_skip, load_batch_training_settings
     config, config_dir = load_project_config(config_path)
     paths = resolve_paths(config_dir, get_section(config, "paths"), ["product_registry"])
     payload = json.loads(paths["product_registry"].read_text(encoding="utf-8"))
     records = payload if isinstance(payload, list) else payload.get("products", [])
-    return {str(r["product_id"]).upper(): r for r in records}
+    annotated = annotate_products_for_batch_skip(
+        records, **load_batch_training_settings(config_path=config_path)
+    )
+    return {str(r["product_id"]).upper(): r for r in annotated}
 
 
 # ─────────────────────────────────────────────
@@ -235,8 +239,10 @@ def _load_registry(config_path: str | None) -> dict[str, dict]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Compare vol_norm vs raw_return target.")
-    parser.add_argument("--products", nargs="+", default=DEFAULT_PRODUCTS,
-                        help="Product IDs to test (default: RB CU AU M)")
+    parser.add_argument("--products", nargs="+", default=None,
+                        help="Product IDs to test (default: built-in subset; use --all for full registry)")
+    parser.add_argument("--all", action="store_true",
+                        help="Run on every enabled product in product_registry.json")
     parser.add_argument("--config", default=None, help="Path to config.yaml")
     parser.add_argument("--force-rebuild", action="store_true",
                         help="Rebuild feature cache before running")
@@ -249,7 +255,10 @@ def main() -> None:
     run_dir.mkdir(parents=True, exist_ok=True)
 
     registry = _load_registry(config_path)
-    products = [p.upper() for p in args.products]
+    if args.all:
+        products = sorted(pid for pid, rec in registry.items() if rec.get("enabled", True))
+    else:
+        products = [p.upper() for p in (args.products or DEFAULT_PRODUCTS)]
 
     rows: list[dict] = []
     result_cache = run_dir / "comparison.json"
@@ -272,6 +281,13 @@ def main() -> None:
         if pid not in registry:
             print(f"[{pid}] skip: not in product_registry", flush=True)
             rows.append({"product_id": pid, "error": "not in product_registry"})
+            continue
+
+        skip_status = registry[pid].get("_batch_skip_status")
+        if skip_status:
+            skip_error = registry[pid].get("_batch_skip_error", "")
+            print(f"[{pid}] skip ({skip_status}): {skip_error}", flush=True)
+            rows.append({"product_id": pid, "error": f"{skip_status}: {skip_error}"})
             continue
 
         print(f"\n[check_volnorm] === {pid} ===", flush=True)

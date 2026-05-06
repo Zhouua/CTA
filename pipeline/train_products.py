@@ -115,6 +115,7 @@ def load_batch_training_settings(config_path: str | None = None) -> dict[str, An
         "enforce_registry_coverage": bool(batch_cfg.get("enforce_registry_coverage", True)),
         "required_data_start": _coerce_timestamp(batch_cfg.get("required_data_start", "2021-01-01")),
         "required_data_end": _coerce_timestamp(batch_cfg.get("required_data_end", "2026-01-01")),
+        "max_zero_volume_ratio": float(batch_cfg.get("max_zero_volume_ratio", 0.5)),
     }
 
 
@@ -154,6 +155,7 @@ def annotate_products_for_batch_skip(
     enforce_registry_coverage: bool,
     required_data_start: pd.Timestamp | None,
     required_data_end: pd.Timestamp | None,
+    max_zero_volume_ratio: float | None = None,
 ) -> list[dict[str, Any]]:
     required_data_start = _coerce_timestamp(required_data_start)
     required_data_end = _coerce_timestamp(required_data_end)
@@ -171,6 +173,13 @@ def annotate_products_for_batch_skip(
                 updated_meta["_batch_skip_error"] = skip_message
                 updated_meta["_required_data_start"] = _format_required_timestamp(required_data_start)
                 updated_meta["_required_data_end"] = _format_required_timestamp(required_data_end)
+        if "_batch_skip_status" not in updated_meta and max_zero_volume_ratio is not None:
+            ratio = updated_meta.get("zero_volume_ratio")
+            if isinstance(ratio, (int, float)) and ratio == ratio and ratio > max_zero_volume_ratio:
+                updated_meta["_batch_skip_status"] = "skipped_low_liquidity"
+                updated_meta["_batch_skip_error"] = (
+                    f"zero_volume_ratio={ratio:.3f} exceeds max_zero_volume_ratio={max_zero_volume_ratio:.3f}"
+                )
         annotated.append(updated_meta)
     return annotated
 
@@ -438,13 +447,62 @@ def write_run_summary_md(
         sharpe_vals = [r.get("test_sharpe") for r in rows if isinstance(r.get("test_sharpe"), (int, float))]
         if net_vals and sharpe_vals:
             import statistics as st
-            lines.append("### 摘要")
+
+            def _q(vals, p):
+                vs = sorted(vals)
+                idx = max(0, min(len(vs) - 1, int(round(p * (len(vs) - 1)))))
+                return vs[idx]
+
+            test_ic_vals = [r.get("test_ic") for r in rows if isinstance(r.get("test_ic"), (int, float))]
+            val_ic_vals = [r.get("val_ic") for r in rows if isinstance(r.get("val_ic"), (int, float))]
+            trade_vals = [r.get("test_trades") for r in rows if isinstance(r.get("test_trades"), (int, float))]
+            wr_vals = [r.get("test_winrate") for r in rows if isinstance(r.get("test_winrate"), (int, float))]
+            zero_trade_n = sum(1 for v in trade_vals if v == 0)
+            mid_count = sum(1 for r in rows if (r.get("mid_weekly_feature_count") or 0) > 0)
+
+            lines.append("### 摘要\n")
+            lines.append("**收益分布**")
             lines.append(f"- TEST net annual：median **{st.median(net_vals)*100:+.2f}%** / mean {st.mean(net_vals)*100:+.2f}% / "
+                         f"p25 {_q(net_vals, 0.25)*100:+.2f}% / p75 {_q(net_vals, 0.75)*100:+.2f}% / "
                          f"max {max(net_vals)*100:+.2f}% / min {min(net_vals)*100:+.2f}%")
             lines.append(f"- TEST sharpe：median **{st.median(sharpe_vals):+.2f}** / mean {st.mean(sharpe_vals):+.2f} / "
+                         f"p25 {_q(sharpe_vals, 0.25):+.2f} / p75 {_q(sharpe_vals, 0.75):+.2f} / "
                          f"max {max(sharpe_vals):+.2f} / min {min(sharpe_vals):+.2f}")
-            lines.append(f"- 正收益品种：{sum(1 for v in net_vals if v > 0)} / {len(net_vals)}")
-            mid_count = sum(1 for r in rows if (r.get("mid_weekly_feature_count") or 0) > 0)
+            lines.append(f"- 正收益品种：**{sum(1 for v in net_vals if v > 0)} / {len(net_vals)}** "
+                         f"({sum(1 for v in net_vals if v > 0)/len(net_vals)*100:.0f}%)")
+            lines.append("")
+
+            lines.append("**信号质量**")
+            if test_ic_vals:
+                lines.append(f"- TEST Spearman IC：mean {st.mean(test_ic_vals):+.4f} / "
+                             f"median {st.median(test_ic_vals):+.4f} / "
+                             f"\\|IC\\|>0.02 品种 {sum(1 for v in test_ic_vals if abs(v) > 0.02)} / {len(test_ic_vals)}")
+            if val_ic_vals:
+                lines.append(f"- VAL Spearman IC：mean {st.mean(val_ic_vals):+.4f} / "
+                             f"median {st.median(val_ic_vals):+.4f}")
+            lines.append(f"- 0 笔成交品种：**{zero_trade_n} / {len(rows)}**（quality gate 或信号未越阈值）")
+            lines.append("")
+
+            if trade_vals:
+                non_zero_trades = [v for v in trade_vals if v > 0]
+                lines.append("**交易行为**")
+                lines.append(f"- TEST trades：median {int(st.median(trade_vals))} / mean {st.mean(trade_vals):.0f} / "
+                             f"sum {int(sum(trade_vals)):,}（剔除 0：median {int(st.median(non_zero_trades)) if non_zero_trades else 0}）")
+                if wr_vals:
+                    lines.append(f"- TEST winrate：mean {st.mean(wr_vals)*100:.1f}% / median {st.median(wr_vals)*100:.1f}%")
+                lines.append("")
+
+            top_n = min(3, len(rows))
+            top = sorted(rows, key=lambda r: -(r.get("test_net") if isinstance(r.get("test_net"), (int, float)) else float("-inf")))[:top_n]
+            bot = sorted(rows, key=lambda r: (r.get("test_net") if isinstance(r.get("test_net"), (int, float)) else float("inf")))[:top_n]
+            lines.append("**Top / Bottom（按 TEST net）**")
+            top_str = " · ".join(f"{r['product_id']} {r['test_net']*100:+.2f}%" for r in top)
+            bot_str = " · ".join(f"{r['product_id']} {r['test_net']*100:+.2f}%" for r in bot)
+            lines.append(f"- Top {top_n}：{top_str}")
+            lines.append(f"- Bottom {top_n}：{bot_str}")
+            lines.append("")
+
+            lines.append("**数据**")
             lines.append(f"- 使用 mid 因子品种：{mid_count} / {len(rows)}")
             lines.append("")
 

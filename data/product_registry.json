@@ -7,6 +7,7 @@
     "data_start": "2020-01-02 09:01:00",
     "data_end": "2025-06-30 23:00:00",
     "row_count": 448074,
+    "zero_volume_ratio": 0.0006449827483853114,
     "aliases": [
       "AZL.DCE.csv"
     ],
@@ -22,6 +23,7 @@
     "data_start": "2025-06-09 21:00:00",
     "data_end": "2026-04-15 21:17:00",
     "row_count": 95520,
+    "zero_volume_ratio": 0.22480108877721944,
     "aliases": [
       "ADZL.SHF.csv"
     ],
@@ -37,6 +39,7 @@
     "data_start": "2020-01-01 00:00:00",
     "data_end": "2026-04-15 21:17:00",
     "row_count": 811854,
+    "zero_volume_ratio": 0.005162258238550281,
     "aliases": [
       "AGZL.SHF.csv"
     ],
@@ -54,11 +57,14 @@
     "data_start": "2020-01-01 00:00:00",
     "data_end": "2026-04-15 21:18:00",
     "row_count": 684145,
+    "zero_volume_ratio": 0.005574841590598484,
     "aliases": [
       "ALZL.SHF.csv"
     ],
     "category": "unknown",
-    "mid_weekly_files": [],
+    "mid_weekly_files": [
+      "AL.xlsx"
+    ],
     "enabled": true
   },
   {
@@ -69,6 +75,7 @@
     "data_start": "2023-06-16 21:00:00",
     "data_end": "2026-04-15 21:18:00",
     "row_count": 313977,
+    "zero_volume_ratio": 0.011905330645238346,
     "aliases": [
       "AOZL.SHF.csv"
     ],
@@ -84,6 +91,7 @@
     "data_start": "2024-05-06 09:00:00",
     "data_end": "2025-06-30 15:00:00",
     "row_count": 63506,
+    "zero_volume_ratio": 0.0,
     "aliases": [
       "APZL.CZC.csv",
       "APZL.CZCE.csv"
@@ -100,6 +108,7 @@
     "data_start": "2020-01-01 00:00:00",
     "data_end": "2026-04-15 21:18:00",
     "row_count": 811855,
+    "zero_volume_ratio": 0.005714074557648842,
     "aliases": [
       "AUZL.SHF.csv"
     ],
@@ -117,6 +126,7 @@
     "data_start": "2020-01-02 09:01:00",
     "data_end": "2025-06-30 23:00:00",
     "row_count": 448074,
+    "zero_volume_ratio": 0.005545958926427331,
     "aliases": [
       "BZL.DCE.csv"
     ],
@@ -134,6 +144,7 @@
     "data_start": "2020-01-02 09:00:00",
     "data_end": "2025-06-30 15:00:00",
     "row_count": 300354,
+    "zero_volume_ratio": 0.9868421928790694,
     "aliases": [
       "BBZL.DCE.csv"
     ],
@@ -151,6 +162,7 @@
     "data_start": "2023-07-27 21:00:00",
     "data_end": "2026-04-15 21:18:00",
     "row_count": 224955,
+    "zero_volume_ratio": 0.005325509546353715,
     "aliases": [
       "BRZL.SHF.csv"
     ],
@@ -166,6 +178,7 @@
     "data_start": "2020-01-02 09:01:00",
     "data_end": "2026-01-30 23:00:00",
     "row_count": 498350,
+    "zero_volume_ratio": 0.0016895755994782782,
     "aliases": [
       "BUZL.SHF.csv"
     ],
@@ -183,6 +196,7 @@
     "data_start": "2020-01-02 09:01:00",
     "data_end": "2025-06-30 23:00:00",
     "row_count": 448074,
+    "zero_volume_ratio": 0.0012520253351008986,
     "aliases": [
       "CZL.DCE.csv"
     ],
@@ -200,6 +214,7 @@
     "data_start": "2024-05-06 09:00:00",
     "data_end": "2025-06-30 23:00:00",
     "row_count": 96267,
+    "zero_volume_ratio": 0.00014542885931835415,
     "aliases": [
       "CFZL.CZC.csv",
       "CFZL.CZCE.csv"
@@ -216,6 +231,7 @@
     "data_start": "2024-05-06 09:00:00",
     "data_end": "2025-06-30 15:00:00",
     "row_count": 63506,
+    "zero_volume_ratio": 7.873271816836205e-05,
     "aliases": [
       "CJZL.CZC.csv",
       "CJZL.CZCE.csv"
@@ -232,6 +248,7 @@
     "data_start": "2020-01-02 09:01:00",
     "data_end": "2025-06-30 23:00:00",
     "row_count": 448074,
+    "zero_volume_ratio": 0.0006449827483853114,
     "aliases": [
       "CSZL.DCE.csv"
     ],
@@ -249,6 +266,7 @@
     "data_start": "2020-01-01 00:00:00",
     "data_end": "2025-06-30 23:59:00",
     "row_count": 595794,
+    "zero_volume_ratio": 0.006732192670621053,
     "aliases": [
       "CUZL.SHF.csv"
     ],
@@ -266,6 +284,7 @@
     "data_start": "2024-05-06 09:00:00",
     "data_end": "2025-06-30 23:00:00",
     "row_count": 96267,
+    "zero_volume_ratio": 0.19532134584021524,
     "aliases": [
       "CYZL.CZC.csv",
       "CYZL.CZCE.csv"
@@ -282,6 +301,7 @@
     "data_start": "2020-01-02 09:01:00",
     "data_end": "2025-06-30 23:00:00",
     "row_count": 448074,
+    "zero_volume_ratio": 0.0014037859817797953,
     "aliases": [
       "EBZL.DCE.csv"
     ],
@@ -297,6 +317,7 @@
     "data_start": "2020-01-02 09:01:00",
     "data_end": "2025-06-30 23:00:00",
     "row_count": 448074,
+    "zero_volume_ratio": 0.0012029263023518436,
     "aliases": [
       "EGZL.DCE.csv"
     ],
@@ -314,6 +335,7 @@
     "data_start": "2020-01-02 09:00:00",
     "data_end": "2025-06-30 15:00:00",
     "row_count": 300354,
+    "zero_volume_ratio": 0.19646483815764065,
     "aliases": [
       "FBZL.DCE.csv"
     ],
@@ -331,6 +353,7 @@
     "data_start": "2024-05-06 09:00:00",
     "data_end": "2025-06-30 23:00:00",
     "row_count": 96267,
+    "zero_volume_ratio": 0.0,
     "aliases": [
       "FGZL.CZC.csv",
       "FGZL.CZCE.csv"
@@ -347,6 +370,7 @@
     "data_start": "2020-01-02 09:01:00",
     "data_end": "2026-04-07 14:59:00",
     "row_count": 511828,
+    "zero_volume_ratio": 6.6428565846339e-05,
     "aliases": [
       "FUZL.SHF.csv"
     ],
@@ -364,8 +388,27 @@
     "data_start": "2020-01-02 09:01:00",
     "data_end": "2025-06-30 23:00:00",
     "row_count": 448074,
+    "zero_volume_ratio": 0.0016336587260140066,
     "aliases": [
       "HCZL.SHF.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [
+      "HC.xlsx"
+    ],
+    "enabled": true
+  },
+  {
+    "product_id": "I",
+    "instrument_code": "IZL.DCE",
+    "exchange": "DCE",
+    "raw_data_file": "IZL.DCE.csv",
+    "data_start": "2020-01-02 09:01:00",
+    "data_end": "2025-06-30 23:00:00",
+    "row_count": 448074,
+    "zero_volume_ratio": 0.0007632667818262163,
+    "aliases": [
+      "IZL.DCE.csv"
     ],
     "category": "unknown",
     "mid_weekly_files": [],
@@ -379,11 +422,14 @@
     "data_start": "2020-01-02 09:01:00",
     "data_end": "2025-06-30 23:00:00",
     "row_count": 448074,
+    "zero_volume_ratio": 0.000810134040359405,
     "aliases": [
       "JZL.DCE.csv"
     ],
     "category": "unknown",
-    "mid_weekly_files": [],
+    "mid_weekly_files": [
+      "J.xlsx"
+    ],
     "enabled": true
   },
   {
@@ -394,6 +440,7 @@
     "data_start": "2020-01-02 09:00:00",
     "data_end": "2025-06-30 15:00:00",
     "row_count": 300354,
+    "zero_volume_ratio": 1.331761854345206e-05,
     "aliases": [
       "JDZL.DCE.csv"
     ],
@@ -411,6 +458,7 @@
     "data_start": "2020-01-02 09:01:00",
     "data_end": "2025-06-30 23:00:00",
     "row_count": 448074,
+    "zero_volume_ratio": 0.00214473502144735,
     "aliases": [
       "JMZL.DCE.csv"
     ],
@@ -428,6 +476,7 @@
     "data_start": "2024-05-06 09:00:00",
     "data_end": "2025-06-30 15:00:00",
     "row_count": 63506,
+    "zero_volume_ratio": 1.0,
     "aliases": [
       "JRZL.CZC.csv",
       "JRZL.CZCE.csv"
@@ -444,11 +493,14 @@
     "data_start": "2020-01-02 09:01:00",
     "data_end": "2025-06-30 23:00:00",
     "row_count": 448074,
+    "zero_volume_ratio": 0.0012051580765677099,
     "aliases": [
       "LZL.DCE.csv"
     ],
     "category": "unknown",
-    "mid_weekly_files": [],
+    "mid_weekly_files": [
+      "L.xlsx"
+    ],
     "enabled": true
   },
   {
@@ -459,6 +511,7 @@
     "data_start": "2024-11-18 09:00:00",
     "data_end": "2025-06-30 15:00:00",
     "row_count": 33674,
+    "zero_volume_ratio": 0.003593276712003326,
     "aliases": [
       "LGZL.DCE.csv"
     ],
@@ -474,6 +527,7 @@
     "data_start": "2021-01-08 09:00:00",
     "data_end": "2025-06-30 15:00:00",
     "row_count": 244532,
+    "zero_volume_ratio": 0.0024863821503934044,
     "aliases": [
       "LHZL.DCE.csv"
     ],
@@ -489,6 +543,7 @@
     "data_start": "2024-05-06 09:00:00",
     "data_end": "2025-06-30 15:00:00",
     "row_count": 63506,
+    "zero_volume_ratio": 1.0,
     "aliases": [
       "LRZL.CZC.csv",
       "LRZL.CZCE.csv"
@@ -505,6 +560,7 @@
     "data_start": "2020-01-02 09:01:00",
     "data_end": "2025-06-30 23:00:00",
     "row_count": 448074,
+    "zero_volume_ratio": 0.00012721113030436936,
     "aliases": [
       "MZL.DCE.csv"
     ],
@@ -522,9 +578,26 @@
     "data_start": "2024-05-06 09:00:00",
     "data_end": "2025-06-30 23:00:00",
     "row_count": 96267,
+    "zero_volume_ratio": 0.0,
     "aliases": [
       "MAZL.CZC.csv",
       "MAZL.CZCE.csv"
+    ],
+    "category": "unknown",
+    "mid_weekly_files": [],
+    "enabled": true
+  },
+  {
+    "product_id": "NI",
+    "instrument_code": "NIZL.SHF",
+    "exchange": "SHF",
+    "raw_data_file": "NIZL.SHF.csv",
+    "data_start": "2020-01-01 00:00:00",
+    "data_end": "2025-06-30 23:59:00",
+    "row_count": 595794,
+    "zero_volume_ratio": 0.0022541348184103903,
+    "aliases": [
+      "NIZL.SHF.csv"
     ],
     "category": "unknown",
     "mid_weekly_files": [],
@@ -538,6 +611,7 @@
     "data_start": "2024-05-06 09:00:00",
     "data_end": "2025-06-30 23:00:00",
     "row_count": 96267,
+    "zero_volume_ratio": 0.0,
     "aliases": [
       "OIZL.CZC.csv",
       "OIZL.CZCE.csv"
@@ -554,11 +628,14 @@
     "data_start": "2020-01-02 09:01:00",
     "data_end": "2025-06-30 23:00:00",
     "row_count": 448074,
+    "zero_volume_ratio": 4.0171935885590324e-05,
     "aliases": [
       "PZL.DCE.csv"
     ],
     "category": "unknown",
-    "mid_weekly_files": [],
+    "mid_weekly_files": [
+      "P.xlsx"
+    ],
     "enabled": true
   },
   {
@@ -569,6 +646,7 @@
     "data_start": "2020-01-01 00:00:00",
     "data_end": "2025-06-30 23:59:00",
     "row_count": 595794,
+    "zero_volume_ratio": 0.029070450524845835,
     "aliases": [
       "PBZL.SHF.csv"
     ],
@@ -586,6 +664,7 @@
     "data_start": "2024-05-06 09:00:00",
     "data_end": "2025-06-30 23:00:00",
     "row_count": 96267,
+    "zero_volume_ratio": 0.0019840651521289745,
     "aliases": [
       "PFZL.CZC.csv",
       "PFZL.CZCE.csv"
@@ -602,6 +681,7 @@
     "data_start": "2020-03-30 09:00:00",
     "data_end": "2025-06-30 23:00:00",
     "row_count": 433619,
+    "zero_volume_ratio": 0.0006549528503132935,
     "aliases": [
       "PGZL.DCE.csv"
     ],
@@ -619,6 +699,7 @@
     "data_start": "2024-05-06 09:00:00",
     "data_end": "2025-06-30 15:00:00",
     "row_count": 63506,
+    "zero_volume_ratio": 0.00011022580543570687,
     "aliases": [
       "PKZL.CZC.csv",
       "PKZL.CZCE.csv"
@@ -635,6 +716,7 @@
     "data_start": "2024-05-06 09:00:00",
     "data_end": "2025-06-30 15:00:00",
     "row_count": 63506,
+    "zero_volume_ratio": 1.0,
     "aliases": [
       "PMZL.CZC.csv",
       "PMZL.CZCE.csv"
@@ -651,11 +733,14 @@
     "data_start": "2020-01-02 09:01:00",
     "data_end": "2025-06-30 23:00:00",
     "row_count": 448074,
+    "zero_volume_ratio": 0.000794511620848342,
     "aliases": [
       "PPZL.DCE.csv"
     ],
     "category": "unknown",
-    "mid_weekly_files": [],
+    "mid_weekly_files": [
+      "PP.xlsx"
+    ],
     "enabled": true
   },
   {
@@ -666,6 +751,7 @@
     "data_start": "2024-08-29 21:00:00",
     "data_end": "2025-06-30 23:00:00",
     "row_count": 67789,
+    "zero_volume_ratio": 0.024295977223443333,
     "aliases": [
       "PRZL.CZC.csv",
       "PRZL.CZCE.csv"
@@ -682,6 +768,7 @@
     "data_start": "2024-05-06 09:00:00",
     "data_end": "2025-06-30 23:00:00",
     "row_count": 96267,
+    "zero_volume_ratio": 0.0007167565209261741,
     "aliases": [
       "PXZL.CZC.csv",
       "PXZL.CZCE.csv"
@@ -698,6 +785,7 @@
     "data_start": "2020-01-02 09:01:00",
     "data_end": "2026-03-06 15:00:00",
     "row_count": 504683,
+    "zero_volume_ratio": 0.0007727623082212003,
     "aliases": [
       "RBZL.SHF.csv"
     ],
@@ -715,6 +803,7 @@
     "data_start": "2024-05-06 09:00:00",
     "data_end": "2025-06-30 15:00:00",
     "row_count": 63506,
+    "zero_volume_ratio": 1.0,
     "aliases": [
       "RIZL.CZC.csv",
       "RIZL.CZCE.csv"
@@ -731,6 +820,7 @@
     "data_start": "2024-05-06 09:00:00",
     "data_end": "2025-06-30 23:00:00",
     "row_count": 96267,
+    "zero_volume_ratio": 0.0,
     "aliases": [
       "RMZL.CZC.csv",
       "RMZL.CZCE.csv"
@@ -747,6 +837,7 @@
     "data_start": "2020-01-02 09:01:00",
     "data_end": "2025-06-30 23:00:00",
     "row_count": 448074,
+    "zero_volume_ratio": 0.42123622437365255,
     "aliases": [
       "RRZL.DCE.csv"
     ],
@@ -764,6 +855,7 @@
     "data_start": "2024-05-06 09:00:00",
     "data_end": "2025-06-30 15:00:00",
     "row_count": 63506,
+    "zero_volume_ratio": 0.8866248858375586,
     "aliases": [
       "RSZL.CZC.csv",
       "RSZL.CZCE.csv"
@@ -780,6 +872,7 @@
     "data_start": "2020-01-02 09:01:00",
     "data_end": "2025-06-30 23:00:00",
     "row_count": 448074,
+    "zero_volume_ratio": 0.00010489338814570808,
     "aliases": [
       "RUZL.SHF.csv"
     ],
@@ -797,6 +890,7 @@
     "data_start": "2024-05-06 09:00:00",
     "data_end": "2025-06-30 23:00:00",
     "row_count": 96267,
+    "zero_volume_ratio": 0.0,
     "aliases": [
       "SAZL.CZC.csv",
       "SAZL.CZCE.csv"
@@ -813,6 +907,7 @@
     "data_start": "2024-05-06 09:00:00",
     "data_end": "2025-06-30 15:00:00",
     "row_count": 63506,
+    "zero_volume_ratio": 0.0,
     "aliases": [
       "SFZL.CZC.csv",
       "SFZL.CZCE.csv"
@@ -829,6 +924,7 @@
     "data_start": "2024-05-06 09:00:00",
     "data_end": "2025-06-30 23:00:00",
     "row_count": 96267,
+    "zero_volume_ratio": 0.0,
     "aliases": [
       "SHZL.CZC.csv",
       "SHZL.CZCE.csv"
@@ -845,6 +941,7 @@
     "data_start": "2024-05-06 09:00:00",
     "data_end": "2025-06-30 15:00:00",
     "row_count": 63506,
+    "zero_volume_ratio": 1.574654363367241e-05,
     "aliases": [
       "SMZL.CZC.csv",
       "SMZL.CZCE.csv"
@@ -861,6 +958,7 @@
     "data_start": "2020-01-01 00:00:00",
     "data_end": "2025-06-30 23:59:00",
     "row_count": 595794,
+    "zero_volume_ratio": 0.006235376657032464,
     "aliases": [
       "SNZL.SHF.csv"
     ],
@@ -878,6 +976,7 @@
     "data_start": "2020-01-02 09:01:00",
     "data_end": "2025-06-30 23:00:00",
     "row_count": 448074,
+    "zero_volume_ratio": 0.00033253435816405326,
     "aliases": [
       "SPZL.SHF.csv"
     ],
@@ -895,6 +994,7 @@
     "data_start": "2024-05-06 09:00:00",
     "data_end": "2025-06-30 23:00:00",
     "row_count": 96267,
+    "zero_volume_ratio": 0.0,
     "aliases": [
       "SRZL.CZC.csv",
       "SRZL.CZCE.csv"
@@ -911,11 +1011,14 @@
     "data_start": "2020-01-01 00:00:00",
     "data_end": "2025-06-30 23:59:00",
     "row_count": 595794,
+    "zero_volume_ratio": 0.014003162166789191,
     "aliases": [
       "SSZL.SHF.csv"
     ],
     "category": "unknown",
-    "mid_weekly_files": [],
+    "mid_weekly_files": [
+      "SS.xlsx"
+    ],
     "enabled": true
   },
   {
@@ -926,6 +1029,7 @@
     "data_start": "2024-05-06 09:00:00",
     "data_end": "2025-06-30 23:00:00",
     "row_count": 96267,
+    "zero_volume_ratio": 3.116332699679018e-05,
     "aliases": [
       "TAZL.CZC.csv",
       "TAZL.CZCE.csv"
@@ -942,6 +1046,7 @@
     "data_start": "2024-05-06 09:00:00",
     "data_end": "2025-06-30 15:00:00",
     "row_count": 63506,
+    "zero_volume_ratio": 0.0,
     "aliases": [
       "URZL.CZC.csv",
       "URZL.CZCE.csv"
@@ -958,6 +1063,7 @@
     "data_start": "2020-01-02 09:01:00",
     "data_end": "2025-06-30 23:00:00",
     "row_count": 448074,
+    "zero_volume_ratio": 0.001156059043818655,
     "aliases": [
       "VZL.DCE.csv"
     ],
@@ -975,6 +1081,7 @@
     "data_start": "2024-05-06 09:00:00",
     "data_end": "2025-06-30 15:00:00",
     "row_count": 63506,
+    "zero_volume_ratio": 1.0,
     "aliases": [
       "WHZL.CZC.csv",
       "WHZL.CZCE.csv"
@@ -991,6 +1098,7 @@
     "data_start": "2020-01-02 09:00:00",
     "data_end": "2025-06-30 15:00:00",
     "row_count": 300354,
+    "zero_volume_ratio": 0.8516750234723027,
     "aliases": [
       "WRZL.SHF.csv"
     ],
@@ -1008,6 +1116,7 @@
     "data_start": "2020-01-02 09:01:00",
     "data_end": "2025-06-30 23:00:00",
     "row_count": 448074,
+    "zero_volume_ratio": 0.0004508183916049581,
     "aliases": [
       "YZL.DCE.csv"
     ],
@@ -1025,6 +1134,7 @@
     "data_start": "2024-05-06 09:00:00",
     "data_end": "2025-06-30 23:00:00",
     "row_count": 95921,
+    "zero_volume_ratio": 1.0,
     "aliases": [
       "ZCZL.CZC.csv",
       "ZCZL.CZCE.csv"
@@ -1041,6 +1151,7 @@
     "data_start": "2020-01-01 00:00:00",
     "data_end": "2025-06-30 23:59:00",
     "row_count": 595794,
+    "zero_volume_ratio": 0.0025730369892949575,
     "aliases": [
       "ZNZL.SHF.csv"
     ],

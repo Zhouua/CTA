@@ -35,7 +35,7 @@ data:
   force_rebuild_cache: false
   use_engineered_features: true
   use_synthetic_factors: true
-  use_mid_weekly: true        # 是否启用中观因子
+  use_mid_weekly: false        # 是否启用中观因子
   mid_alignment: asof_forward_fill
   engineered_windows:
     short: 5
@@ -44,12 +44,12 @@ data:
 
 vol_split:
   window: 20
-  vol_percentage: 0.65 # 通过python scripts/exp_pure_micro_horizon_cutoff.py 实践比较获得
+  vol_percentage: 0.75 # AL h30 sweep: sharpe 0.887@0.75 vs −1.518@0.65; 多品种平均亦以0.75稳健
   label_train_only: false
   regime_label_source: daily
   split_granularity: month
   min_train_rows_per_regime: 20000
-  rolling_regime_window: 0    # >0 时用滚动 N 日 vol 分位数做 regime 阈值，适应波动率制度性变化；0=禁用（用训练期固定阈值）
+  rolling_regime_window: 240  # 240 天滚动 vol_percentage 分位数做 regime 阈值（baseline_roll240 实验证实优于固定 cutoff，22 共同品种 +5.49pp）
 
 factors:
   runtime:
@@ -126,6 +126,7 @@ batch_training:
   enforce_registry_coverage: true
   required_data_start: 2021-01-01
   required_data_end: 2025-01-01
+  max_zero_volume_ratio: 0.5
 
 model:
   target_column: target_vol_norm

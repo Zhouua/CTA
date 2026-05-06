@@ -118,7 +118,11 @@ def _resolve_thresholds(
     return max(entry, 0.0), max(min(exit_, entry), 0.0)
 
 
-def build_signal_rule_map(validation_df: pd.DataFrame, settings: dict[str, Any]) -> dict[int, dict[str, Any]]:
+def build_signal_rule_map(
+    validation_df: pd.DataFrame,
+    settings: dict[str, Any],
+    train_fallback_df: pd.DataFrame | None = None,
+) -> dict[int, dict[str, Any]]:
     total_cost = settings["commission_rate"] + settings["slippage_rate"]
     round_trip_cost = total_cost * settings["round_trip_turnover"]
     rule_map: dict[int, dict[str, Any]] = {}
@@ -126,7 +130,28 @@ def build_signal_rule_map(validation_df: pd.DataFrame, settings: dict[str, Any])
     for regime_label in sorted(REGIME_NAME_MAP):
         regime_df = validation_df.loc[validation_df["REGIME_LABEL"] == regime_label].copy()
         if regime_df.empty:
-            continue
+            # Val has no rows for this regime — try train fallback for threshold calibration.
+            # If no fallback available, mark as degenerate (quality gate will force flat).
+            if train_fallback_df is not None:
+                fallback = train_fallback_df.loc[train_fallback_df["REGIME_LABEL"] == regime_label].copy()
+            else:
+                fallback = pd.DataFrame()
+            if fallback.empty:
+                rule_map[regime_label] = {
+                    "regime_name": REGIME_NAME_MAP[regime_label],
+                    "degenerate": True,
+                    "entry_threshold": 0.0,
+                    "exit_threshold": 0.0,
+                    "cost_filter_threshold": 0.0,
+                    "effective_entry_threshold": 0.0,
+                    "confirmation_bars": int(settings["confirmation_bars"]),
+                    "min_hold_bars": int(settings["min_hold_bars"]),
+                    "cooldown_bars": int(settings["cooldown_bars"]),
+                    "allow_direct_flip": bool(settings["allow_direct_flip"]),
+                    "flip_to_flat_first": bool(settings["flip_to_flat_first"]),
+                }
+                continue
+            regime_df = fallback
         entry_threshold, exit_threshold = _resolve_thresholds(
             pred_series=regime_df[settings["signal_col"]],
             threshold_mode=settings["threshold_mode"],
@@ -719,14 +744,15 @@ def execute_backtest(
     artifact_map: dict[int, RegimeModelArtifact],
     settings: dict[str, Any],
 ) -> BacktestArtifacts:
+    train_pred = predict_dual_regime(prepared.train_data, prepared.feature_cols, prepared.target_col, artifact_map)
     val_pred = predict_dual_regime(prepared.val_data, prepared.feature_cols, prepared.target_col, artifact_map)
     test_pred = predict_dual_regime(prepared.test_data, prepared.feature_cols, prepared.target_col, artifact_map)
 
-    rule_map = build_signal_rule_map(val_pred, settings)
+    rule_map = build_signal_rule_map(val_pred, settings, train_fallback_df=train_pred)
 
     min_ic = settings.get("min_regime_val_ic", -0.01)
     for label, artifact in artifact_map.items():
-        if label in rule_map and artifact.val_spearman_ic < min_ic:
+        if label in rule_map and not rule_map[label].get("degenerate", False) and artifact.val_spearman_ic < min_ic:
             rule_map[label]["degenerate"] = True
 
     val_position = generate_positions(val_pred, rule_map, settings)

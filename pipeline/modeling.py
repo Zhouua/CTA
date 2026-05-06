@@ -231,7 +231,6 @@ def train_single_regime_model(
     regime_name = REGIME_NAME_MAP[int(regime_label)]
     scaler = _build_scaler(scale_method)
     x_train, y_train = _prepare_xy(train_df, feature_cols, target_col, scaler, fit_scaler=True)
-    x_val, y_val = _prepare_xy(val_df, feature_cols, target_col, scaler, fit_scaler=False)
 
     # weight_i = |target_i|^alpha，归一化使总损失尺度不变；val不传weight保持early stopping无偏
     weights = None
@@ -240,23 +239,39 @@ def train_single_regime_model(
         weights = w / (w.mean() + 1e-10)
 
     train_set = lgb.Dataset(x_train, label=y_train, weight=weights, feature_name=feature_cols)
-    val_set = lgb.Dataset(x_val, label=y_val, feature_name=feature_cols, reference=train_set)
     evals_result: dict[str, Any] = {}
-    booster = lgb.train(
-        params=params,
-        train_set=train_set,
-        num_boost_round=num_boost_round,
-        valid_sets=[train_set, val_set],
-        valid_names=["train", "val"],
-        callbacks=[
-            *(
-                [lgb.early_stopping(early_stopping_rounds, verbose=False)]
-                if early_stopping_rounds > 0
-                else []
-            ),
-            lgb.record_evaluation(evals_result),
-        ],
-    )
+
+    val_empty = val_df.empty
+    if val_empty:
+        # Val split has no samples for this regime — train without early stopping.
+        # val_spearman_ic stays 0.0 (neutral): no IC measurement is not the same as bad IC,
+        # so the quality gate should not fire; thresholds will be calibrated from train fallback.
+        booster = lgb.train(
+            params=params,
+            train_set=train_set,
+            num_boost_round=num_boost_round,
+            valid_sets=[train_set],
+            valid_names=["train"],
+            callbacks=[lgb.record_evaluation(evals_result)],
+        )
+    else:
+        x_val, y_val = _prepare_xy(val_df, feature_cols, target_col, scaler, fit_scaler=False)
+        val_set = lgb.Dataset(x_val, label=y_val, feature_name=feature_cols, reference=train_set)
+        booster = lgb.train(
+            params=params,
+            train_set=train_set,
+            num_boost_round=num_boost_round,
+            valid_sets=[train_set, val_set],
+            valid_names=["train", "val"],
+            callbacks=[
+                *(
+                    [lgb.early_stopping(early_stopping_rounds, verbose=False)]
+                    if early_stopping_rounds > 0
+                    else []
+                ),
+                lgb.record_evaluation(evals_result),
+            ],
+        )
 
     feature_importance = pd.DataFrame(
         {
@@ -266,19 +281,29 @@ def train_single_regime_model(
         }
     ).sort_values("importance_gain", ascending=False)
 
-    val_pred_df = predict_single_regime(val_df, feature_cols, target_col, booster, scaler)
+    val_pred_df = (
+        predict_single_regime(val_df, feature_cols, target_col, booster, scaler)
+        if not val_empty
+        else val_df.copy()
+    )
     test_pred_df = (
         predict_single_regime(test_df, feature_cols, target_col, booster, scaler)
         if not test_df.empty
         else test_df.copy()
     )
 
+    val_metrics = (
+        calc_prediction_metrics(val_pred_df["future_return"], val_pred_df["pred_return"])
+        if not val_empty
+        else {}
+    )
     metrics = {
         "train_rows": int(len(train_df)),
         "val_rows": int(len(val_df)),
         "test_rows": int(len(test_df)),
         "best_iteration": int(booster.best_iteration or num_boost_round),
-        "val_metrics": calc_prediction_metrics(val_pred_df["future_return"], val_pred_df["pred_return"]),
+        "val_metrics": val_metrics,
+        "val_empty": val_empty,
         "test_metrics": (
             calc_prediction_metrics(test_pred_df["future_return"], test_pred_df["pred_return"])
             if not test_pred_df.empty
@@ -286,6 +311,8 @@ def train_single_regime_model(
         ),
         "top_features": feature_importance.head(20).to_dict(orient="records"),
     }
+    # Empty val → no IC measurement; keep 0.0 so the quality gate does not fire.
+    val_ic = 0.0 if val_empty else float(val_metrics.get("spearman_ic", 0.0))
     return RegimeModelArtifact(
         regime_label=int(regime_label),
         regime_name=regime_name,
@@ -295,7 +322,7 @@ def train_single_regime_model(
         training_history=evals_result,
         feature_importance=feature_importance,
         metrics=_to_native(metrics),
-        val_spearman_ic=float(metrics["val_metrics"].get("spearman_ic", 0.0)),
+        val_spearman_ic=val_ic,
     )
 
 
@@ -554,8 +581,14 @@ def train_dual_regime_models(
         train_df = prepared.train_data.loc[prepared.train_data["REGIME_LABEL"] == regime_label].copy()
         val_df = prepared.val_data.loc[prepared.val_data["REGIME_LABEL"] == regime_label].copy()
         test_df = prepared.test_data.loc[prepared.test_data["REGIME_LABEL"] == regime_label].copy()
-        if train_df.empty or val_df.empty:
+        if train_df.empty:
             raise ValueError(_build_empty_regime_split_message(regime_name, train_df, val_df, test_df))
+        if val_df.empty:
+            import logging
+            logging.getLogger(__name__).warning(
+                _build_empty_regime_split_message(regime_name, train_df, val_df, test_df)
+                + " — training without early stopping; regime will be forced flat by quality gate."
+            )
 
         params = _resolve_regime_params(settings, regime_name)
         artifact = train_single_regime_model(
@@ -572,12 +605,16 @@ def train_dual_regime_models(
             sample_weight_alpha=settings["sample_weight_alpha"],
         )
         artifact_map[regime_label] = artifact
-        val_prediction_map[regime_label] = predict_single_regime(
-            df=val_df,
-            feature_cols=prepared.feature_cols,
-            target_col=prepared.target_col,
-            booster=artifact.booster,
-            scaler=artifact.scaler,
+        val_prediction_map[regime_label] = (
+            predict_single_regime(
+                df=val_df,
+                feature_cols=prepared.feature_cols,
+                target_col=prepared.target_col,
+                booster=artifact.booster,
+                scaler=artifact.scaler,
+            )
+            if not val_df.empty
+            else val_df.copy()
         )
         summary["regimes"][regime_name] = {
             "params": params,

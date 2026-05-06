@@ -70,9 +70,15 @@ def _i(v):
 # core: single-model backtest
 # ─────────────────────────────────────────────
 
-def _backtest_single_model(prepared, config_path: str, config_override: dict) -> dict:
-    """Train ONE LightGBM on all train rows (no regime split) and backtest."""
+def _backtest_single_model(
+    prepared, config_path: str, config_override: dict
+) -> tuple[dict, "pd.DataFrame"]:
+    """Train ONE LightGBM on all train rows (no regime split) and backtest.
+
+    Returns (metrics_dict, test_daily_df).
+    """
     import numpy as np
+    import pandas as pd
     from config_utils import get_section, load_project_config
     from dataset import REGIME_NAME_MAP
     from modeling import train_single_regime_model, predict_single_regime, calc_prediction_metrics
@@ -91,7 +97,6 @@ def _backtest_single_model(prepared, config_path: str, config_override: dict) ->
     early_stopping_rounds = int(model_cfg.get("early_stopping_rounds", 50))
     scale_method = str(model_cfg.get("scale_method", "robust")).lower()
 
-    # single unified model on all train rows (regime_label=-1 is just a naming token)
     artifact = train_single_regime_model(
         train_df=prepared.train_data,
         val_df=prepared.val_data,
@@ -115,7 +120,6 @@ def _backtest_single_model(prepared, config_path: str, config_override: dict) ->
     )
 
     settings = build_backtest_settings(config_path=config_path, config_override=config_override)
-    # compute per-regime signal thresholds from single-model val predictions
     rule_map = build_signal_rule_map(val_pred, settings)
     fallback = next(iter(rule_map.values())) if rule_map else {}
     for label, name in REGIME_NAME_MAP.items():
@@ -132,13 +136,91 @@ def _backtest_single_model(prepared, config_path: str, config_override: dict) ->
         test_pred["future_return"].values, test_pred["pred_return"].values,
     )
     net = test_perf.get("net") or {}
-    return {
+    metrics = {
         "annual_return": net.get("annual_return"),
         "sharpe": net.get("sharpe"),
         "max_drawdown": net.get("max_drawdown"),
         "trade_count": test_perf.get("trade_count"),
         "spearman_ic": test_ic.get("spearman_ic"),
     }
+    return metrics, test_daily
+
+
+# ─────────────────────────────────────────────
+# comparison chart
+# ─────────────────────────────────────────────
+
+def _plot_nav_comparison(
+    dual_daily: "pd.DataFrame",
+    single_daily: "pd.DataFrame",
+    dual_metrics: dict,
+    single_metrics: dict,
+    output_path: Path,
+    product_id: str,
+) -> None:
+    """Plot dual_regime vs single_model cumulative net NAV on a single chart."""
+    import matplotlib.pyplot as plt
+    import matplotlib.dates as mdates
+    import pandas as pd
+
+    plt.rcParams.update({
+        "axes.unicode_minus": False,
+        "font.sans-serif": ["PingFang SC", "Heiti SC", "SimHei", "Arial Unicode MS", "DejaVu Sans"],
+    })
+
+    fig, (ax_nav, ax_dd) = plt.subplots(
+        2, 1, figsize=(14, 8), sharex=True,
+        gridspec_kw={"height_ratios": [3, 1]},
+    )
+
+    def _prep(daily):
+        d = daily.copy()
+        d["TRADE_DATE"] = pd.to_datetime(d["TRADE_DATE"])
+        return d.sort_values("TRADE_DATE")
+
+    dual = _prep(dual_daily)
+    single = _prep(single_daily)
+
+    def _label(name, m):
+        net = _pct(m.get("annual_return"))
+        sh = _f2(m.get("sharpe"))
+        tr = _i(m.get("trade_count"))
+        return f"{name}  net={net}  Sharpe={sh}  trades={tr}"
+
+    ax_nav.plot(
+        dual["TRADE_DATE"], dual["nav_net"],
+        color="#1f77b4", linewidth=1.6,
+        label=_label("双域模型", dual_metrics),
+    )
+    ax_nav.plot(
+        single["TRADE_DATE"], single["nav_net"],
+        color="#d62728", linewidth=1.4, linestyle="--",
+        label=_label("单域基线", single_metrics),
+    )
+    ax_nav.axhline(1.0, color="black", linewidth=0.7, linestyle=":")
+    ax_nav.set_ylabel("累计净值")
+    ax_nav.set_title(f"双域模型 vs 单域基线——净值对比（{product_id}，测试集）")
+    ax_nav.legend(fontsize=9)
+    ax_nav.grid(alpha=0.25)
+
+    ax_dd.fill_between(
+        dual["TRADE_DATE"], dual["net_drawdown"], 0,
+        color="#1f77b4", alpha=0.35, label="双域回撤",
+    )
+    ax_dd.fill_between(
+        single["TRADE_DATE"], single["net_drawdown"], 0,
+        color="#d62728", alpha=0.25, label="单域回撤",
+    )
+    ax_dd.set_ylabel("回撤")
+    ax_dd.legend(fontsize=8)
+    ax_dd.grid(alpha=0.25)
+    ax_dd.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
+    fig.autofmt_xdate(rotation=30)
+
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print(f"  [chart] regime_model_comparison → {output_path}", flush=True)
 
 
 # ─────────────────────────────────────────────
@@ -195,15 +277,29 @@ def _run_for_product(
     settings = build_backtest_settings(config_path=config_path, config_override=config_override)
     arts = execute_backtest(prepared=prepared, artifact_map=artifact_map, settings=settings)
     dual_metrics = _extract_metrics(arts.summary)
+    dual_daily = arts.test_daily
     print(f"  [{product_id}] dual_regime done ({time.time()-t0:.0f}s)  "
           f"net={_pct(dual_metrics['annual_return'])}  sharpe={_f2(dual_metrics['sharpe'])}", flush=True)
 
     # ③b single_model
     print(f"  [{product_id}] training single_model ...", flush=True)
     t0 = time.time()
-    single_metrics = _backtest_single_model(prepared, config_path, config_override)
+    single_metrics, single_daily = _backtest_single_model(prepared, config_path, config_override)
     print(f"  [{product_id}] single_model done ({time.time()-t0:.0f}s)  "
           f"net={_pct(single_metrics['annual_return'])}  sharpe={_f2(single_metrics['sharpe'])}", flush=True)
+
+    # ④ comparison chart
+    try:
+        _plot_nav_comparison(
+            dual_daily=dual_daily,
+            single_daily=single_daily,
+            dual_metrics=dual_metrics,
+            single_metrics=single_metrics,
+            output_path=product_dir / "regime_model_comparison.png",
+            product_id=product_id,
+        )
+    except Exception as exc:
+        print(f"  [{product_id}] chart failed: {exc}", flush=True)
 
     return {"dual_regime": dual_metrics, "single_model": single_metrics}
 
@@ -269,11 +365,15 @@ def _write_comparison(run_dir: Path, rows: list[dict]) -> None:
 
 def _load_registry(config_path: str | None) -> dict[str, dict]:
     from config_utils import get_section, load_project_config, resolve_paths
+    from train_products import annotate_products_for_batch_skip, load_batch_training_settings
     config, config_dir = load_project_config(config_path)
     paths = resolve_paths(config_dir, get_section(config, "paths"), ["product_registry"])
     payload = json.loads(paths["product_registry"].read_text(encoding="utf-8"))
     records = payload if isinstance(payload, list) else payload.get("products", [])
-    return {str(r["product_id"]).upper(): r for r in records}
+    annotated = annotate_products_for_batch_skip(
+        records, **load_batch_training_settings(config_path=config_path)
+    )
+    return {str(r["product_id"]).upper(): r for r in annotated}
 
 
 # ─────────────────────────────────────────────
@@ -282,8 +382,10 @@ def _load_registry(config_path: str | None) -> dict[str, dict]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Compare dual_regime vs single_model.")
-    parser.add_argument("--products", nargs="+", default=DEFAULT_PRODUCTS,
-                        help="Product IDs to test (default: RB CU AU M)")
+    parser.add_argument("--products", nargs="+", default=None,
+                        help="Product IDs to test (default: built-in subset; use --all for full registry)")
+    parser.add_argument("--all", action="store_true",
+                        help="Run on every enabled product in product_registry.json")
     parser.add_argument("--config", default=None, help="Path to config.yaml")
     parser.add_argument("--force-rebuild", action="store_true",
                         help="Rebuild feature cache before running")
@@ -296,7 +398,10 @@ def main() -> None:
     run_dir.mkdir(parents=True, exist_ok=True)
 
     registry = _load_registry(config_path)
-    products = [p.upper() for p in args.products]
+    if args.all:
+        products = sorted(pid for pid, rec in registry.items() if rec.get("enabled", True))
+    else:
+        products = [p.upper() for p in (args.products or DEFAULT_PRODUCTS)]
 
     rows: list[dict] = []
     result_cache = run_dir / "comparison.json"
@@ -320,6 +425,13 @@ def main() -> None:
         if pid not in registry:
             print(f"[{pid}] skip: not in product_registry", flush=True)
             rows.append({"product_id": pid, "error": "not in product_registry"})
+            continue
+
+        skip_status = registry[pid].get("_batch_skip_status")
+        if skip_status:
+            skip_error = registry[pid].get("_batch_skip_error", "")
+            print(f"[{pid}] skip ({skip_status}): {skip_error}", flush=True)
+            rows.append({"product_id": pid, "error": f"{skip_status}: {skip_error}"})
             continue
 
         print(f"\n[check_regime] === {pid} ===", flush=True)

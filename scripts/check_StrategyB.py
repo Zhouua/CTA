@@ -274,11 +274,15 @@ def _write_comparison(run_dir: Path, rows: list[dict], tp_fraction: float) -> No
 
 def _load_registry(config_path: str | None) -> dict[str, dict]:
     from config_utils import get_section, load_project_config, resolve_paths
+    from train_products import annotate_products_for_batch_skip, load_batch_training_settings
     config, config_dir = load_project_config(config_path)
     paths = resolve_paths(config_dir, get_section(config, "paths"), ["product_registry"])
     payload = json.loads(paths["product_registry"].read_text(encoding="utf-8"))
     records = payload if isinstance(payload, list) else payload.get("products", [])
-    return {str(r["product_id"]).upper(): r for r in records}
+    annotated = annotate_products_for_batch_skip(
+        records, **load_batch_training_settings(config_path=config_path)
+    )
+    return {str(r["product_id"]).upper(): r for r in annotated}
 
 
 # ─────────────────────────────────────────────
@@ -304,6 +308,9 @@ def main() -> None:
     rows: list[dict] = []
     result_cache = run_dir / "comparison.json"
     existing: dict[str, dict] = {}
+
+    # Resume-friendly：先加载 comparison.json，再用 per-product result.json 兜底
+    # （上次因 SIGKILL 等无法触发 except 的崩溃后，comparison.json 可能根本没写出来）
     if not args.rerun_all and result_cache.exists():
         try:
             for r in json.loads(result_cache.read_text(encoding="utf-8")):
@@ -311,6 +318,19 @@ def main() -> None:
                     existing[r["product_id"]] = r
         except Exception:
             pass
+    if not args.rerun_all:
+        for pid in (p.upper() for p in args.products):
+            if pid in existing:
+                continue
+            ckpt = run_dir / pid / "result.json"
+            if not ckpt.exists():
+                continue
+            try:
+                payload = json.loads(ckpt.read_text(encoding="utf-8"))
+                if all(k in payload for k in ("baseline", "strategy_b", "strategy_c")):
+                    existing[pid] = {"product_id": pid, **payload}
+            except Exception:
+                pass
 
     for pid in products:
         if pid in existing:
@@ -320,6 +340,13 @@ def main() -> None:
         if pid not in registry:
             print(f"[{pid}] skip: not in product_registry", flush=True)
             rows.append({"product_id": pid, "error": "not in product_registry"})
+            continue
+
+        skip_status = registry[pid].get("_batch_skip_status")
+        if skip_status:
+            skip_error = registry[pid].get("_batch_skip_error", "")
+            print(f"[{pid}] skip ({skip_status}): {skip_error}", flush=True)
+            rows.append({"product_id": pid, "error": f"{skip_status}: {skip_error}"})
             continue
 
         print(f"\n[check_strategy_b] === {pid} ===", flush=True)
@@ -332,6 +359,10 @@ def main() -> None:
                 tp_fraction=args.tp_fraction,
             )
             rows.append({"product_id": pid, **result})
+            # per-product checkpoint：立即落盘，便于下次 resume
+            (run_dir / pid / "result.json").write_text(
+                json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8"
+            )
         except Exception as exc:
             print(f"[{pid}] ERROR: {exc}", flush=True)
             traceback.print_exc()

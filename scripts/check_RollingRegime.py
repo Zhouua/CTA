@@ -97,6 +97,7 @@ def _run_variant(
     product_dir: Path,
     force_rebuild: bool,
     rolling_window: int,
+    disable_gate: bool = False,
 ) -> dict:
     from dataset import prepare_data
     from factor_audit import audit_and_filter
@@ -112,6 +113,9 @@ def _run_variant(
     config_override.setdefault("data", {})["cache_merged_dataset"] = False
     config_override.setdefault("factors", {}).setdefault("runtime", {})["cache_generated_features"] = False
     config_override.setdefault("vol_split", {})["rolling_regime_window"] = rolling_window
+    config_override.setdefault("data", {})["use_mid_weekly"] = False
+    if disable_gate:
+        config_override.setdefault("model", {})["min_regime_val_ic"] = -999.0
 
     prepared = prepare_data(config_path=config_path, force_rebuild=force_rebuild, config_override=config_override)
     balance = _regime_balance(prepared)
@@ -144,7 +148,7 @@ def _run_for_product(product_meta: dict, config_path: str, run_dir: Path, force_
 
     print(f"  [{pid}] variant=fixed (rolling_window=0) ...", flush=True)
     t0 = time.time()
-    fixed = _run_variant(product_meta, config_path, prod_dir_fixed, force_rebuild, rolling_window=0)
+    fixed = _run_variant(product_meta, config_path, prod_dir_fixed, force_rebuild, rolling_window=0, disable_gate=True)
     print(
         f"  [{pid}] fixed  net={_pct(fixed['annual_return'])} "
         f"trades={_i(fixed['trade_count'])} "
@@ -183,18 +187,21 @@ def _write_report(run_dir: Path, rows: list[dict]) -> None:
     lines = [
         "# check_rolling_regime — fixed cutoff vs rolling-240 median\n",
         f"rolling_regime_window=0（固定训练期 cutoff）vs {ROLLING_WINDOW}（滚动中位数）。\n",
-        "| product | fixed net | roll net | fixed trades | roll trades "
+        "| product | fixed net | roll net | fixed sharpe | roll sharpe | fixed mdd | roll mdd "
+        "| fixed trades | roll trades "
         "| fixed IC | roll IC "
         "| fixed valIC_lv | fixed valIC_hv "
         "| roll valIC_lv | roll valIC_hv "
         "| fixed testHV% | roll testHV% |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
 
     def _row(pid, f, r):
         return (
             f"| **{pid}** "
             f"| {_pct(f.get('annual_return'))} | {_pct(r.get('annual_return'))} "
+            f"| {_f4(f.get('sharpe'))} | {_f4(r.get('sharpe'))} "
+            f"| {_pct(f.get('max_drawdown'))} | {_pct(r.get('max_drawdown'))} "
             f"| {_i(f.get('trade_count'))} | {_i(r.get('trade_count'))} "
             f"| {_f4(f.get('spearman_ic'))} | {_f4(r.get('spearman_ic'))} "
             f"| {_f4(f.get('val_ic_lv'))} | {_f4(f.get('val_ic_hv'))} "
@@ -220,8 +227,8 @@ def _write_report(run_dir: Path, rows: list[dict]) -> None:
             ]
             return st.mean(vals) if vals else None
 
-        f_avg = {k: _avg(k, "fixed") for k in ["annual_return", "trade_count", "spearman_ic", "val_ic_lv", "val_ic_hv"]}
-        r_avg = {k: _avg(k, "rolling") for k in ["annual_return", "trade_count", "spearman_ic", "val_ic_lv", "val_ic_hv"]}
+        f_avg = {k: _avg(k, "fixed") for k in ["annual_return", "sharpe", "max_drawdown", "trade_count", "spearman_ic", "val_ic_lv", "val_ic_hv"]}
+        r_avg = {k: _avg(k, "rolling") for k in ["annual_return", "sharpe", "max_drawdown", "trade_count", "spearman_ic", "val_ic_lv", "val_ic_hv"]}
         f_avg["balance"] = {"test": _avg_bal("fixed")}
         r_avg["balance"] = {"test": _avg_bal("rolling")}
         lines.append(_row("**avg**", f_avg, r_avg))

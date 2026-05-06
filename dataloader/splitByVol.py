@@ -17,14 +17,11 @@ def _validate_split_ratio(train_ratio, valid_ratio, test_ratio):
     if not np.isclose(total, 1.0):
         raise ValueError("train_ratio + valid_ratio + test_ratio 必须等于 1.0")
 
-# 分钟级数据聚合成日级数据
+
 def _prepare_minute_data(data):
     df = data.copy()
     df["TDATE"] = pd.to_datetime(df["TDATE"])
     df = df.sort_values("TDATE").reset_index(drop=True)
-
-    if "5min_return" not in df.columns:
-        df["5min_return"] = np.log(df["CLOSE"].shift(-5) / df["CLOSE"])
 
     df["TRADE_DATE"] = df["TDATE"].dt.normalize()
     df["MONTH"] = df["TDATE"].dt.to_period("M")
@@ -90,7 +87,7 @@ def _add_split_boundaries(ax, data):
         ax.axvline(test_start.iloc[0], color="black", linestyle="--", linewidth=1.1)
 
 
-def _build_concatenated_regime_samples(data, vol_label):
+def _build_concatenated_regime_samples(data, vol_label, return_col):
     regime_df = (
         data.loc[data["VOL_LABEL"] == vol_label]
         .sort_values(["MONTH", "TDATE"])
@@ -113,20 +110,6 @@ def _build_concatenated_regime_samples(data, vol_label):
     regime_df["BLOCK_ID"] = regime_df["BLOCK_ID"].astype("Int64")
     regime_df["concat_index"] = np.arange(len(regime_df), dtype=int)
     return regime_df
-
-
-def export_concatenated_regime_data(merged_data, output_dir):
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    high_concat_df = _build_concatenated_regime_samples(merged_data, vol_label=1)
-    low_concat_df = _build_concatenated_regime_samples(merged_data, vol_label=-1)
-
-    high_path = output_dir / "high_vol_concatenated.csv"
-    low_path = output_dir / "low_vol_concatenated.csv"
-    high_concat_df.to_csv(high_path, index=False)
-    low_concat_df.to_csv(low_path, index=False)
-    return high_concat_df, low_concat_df, high_path, low_path
 
 
 def split_by_vol(
@@ -312,14 +295,28 @@ def summarize_monthly_vol(monthly_close):
     return pd.Series(stats, name="monthly_vol_stats")
 
 
-def plot_5min_return_by_vol(merged_data, daily_close=None, monthly_close=None, output_path=None):
+def plot_target_return_by_vol(
+    merged_data,
+    daily_close=None,
+    monthly_close=None,
+    output_path=None,
+    return_col: str = "future_return",
+    target_horizon: int | None = None,
+):
+    """画 regime 划分图：bar-level 预测目标收益 + 日波动率 + 高/低波区段背景。
+
+    return_col 默认走 ``future_return``（由 ``_add_targets`` 按 ``data.target_horizon``
+    计算的同日 horizon 收益）。需要换其他列名（如策略 B 的极值目标）时显式指定。
+    """
     import matplotlib.pyplot as plt
     from matplotlib.lines import Line2D
     from matplotlib.patches import Patch
 
     df = _prepare_minute_data(merged_data)
+    # _prepare_minute_data does data.copy(), so return_col is already in df if it was in merged_data.
+    # No separate merge needed — merging again would rename to return_col_x / return_col_y.
 
-    required_columns = {"VOL_LABEL", "DATA_SPLIT"}
+    required_columns = {"VOL_LABEL", "DATA_SPLIT", return_col}
     missing_columns = required_columns.difference(df.columns)
     if missing_columns:
         raise ValueError(f"缺少必要列: {sorted(missing_columns)}")
@@ -343,6 +340,9 @@ def plot_5min_return_by_vol(merged_data, daily_close=None, monthly_close=None, o
     if monthly_cutoff is None:
         monthly_cutoff = merged_data.attrs.get("monthly_cutoff")
 
+    horizon_label = f"h={target_horizon}" if target_horizon is not None else "horizon"
+    return_title = f"{return_col} ({horizon_label}) with Monthly Volatility Labels"
+
     fig = plt.figure(figsize=(22, 10), constrained_layout=True)
     grid = fig.add_gridspec(
         2,
@@ -360,10 +360,10 @@ def plot_5min_return_by_vol(merged_data, daily_close=None, monthly_close=None, o
     _add_monthly_background(ax_return, df)
     _add_monthly_background(ax_vol, df)
 
-    plot_df = df.dropna(subset=["5min_return"])
+    plot_df = df.dropna(subset=[return_col])
     ax_return.plot(
         plot_df["TDATE"],
-        plot_df["5min_return"],
+        plot_df[return_col],
         color=RETURN_LINE_COLOR,
         linewidth=0.8,
     )
@@ -385,8 +385,8 @@ def plot_5min_return_by_vol(merged_data, daily_close=None, monthly_close=None, o
         )
     _add_split_boundaries(ax_vol, df)
 
-    ax_return.set_title("5min_return with Monthly Volatility Labels")
-    ax_return.set_ylabel("5min_return")
+    ax_return.set_title(return_title)
+    ax_return.set_ylabel(return_col)
     ax_return.grid(alpha=0.15)
     ax_vol.set_title("Daily Volatility (daily_vol_20)")
     ax_vol.set_xlabel("TDATE")
@@ -394,33 +394,33 @@ def plot_5min_return_by_vol(merged_data, daily_close=None, monthly_close=None, o
     ax_vol.grid(alpha=0.15)
     ax_vol.tick_params(axis="x", rotation=30)
 
-    high_concat_df = _build_concatenated_regime_samples(df, vol_label=1)
-    low_concat_df = _build_concatenated_regime_samples(df, vol_label=-1)
+    high_concat_df = _build_concatenated_regime_samples(df, vol_label=1, return_col=return_col)
+    low_concat_df = _build_concatenated_regime_samples(df, vol_label=-1, return_col=return_col)
 
     ax_high_concat.plot(
         high_concat_df["concat_index"],
-        high_concat_df["5min_return"],
+        high_concat_df[return_col],
         color=HIGH_VOL_COLOR,
         linewidth=0.8,
     )
     ax_high_concat.set_title(f"Concatenated High-Vol Samples (n={len(high_concat_df):,})")
-    ax_high_concat.set_ylabel("5min_return")
+    ax_high_concat.set_ylabel(return_col)
     ax_high_concat.set_xlabel("concatenated sample index")
     ax_high_concat.grid(alpha=0.15)
 
     ax_low_concat.plot(
         low_concat_df["concat_index"],
-        low_concat_df["5min_return"],
+        low_concat_df[return_col],
         color=LOW_VOL_COLOR,
         linewidth=0.8,
     )
     ax_low_concat.set_title(f"Concatenated Low-Vol Samples (n={len(low_concat_df):,})")
-    ax_low_concat.set_ylabel("5min_return")
+    ax_low_concat.set_ylabel(return_col)
     ax_low_concat.set_xlabel("concatenated sample index")
     ax_low_concat.grid(alpha=0.15)
 
     legend_handles = [
-        Line2D([0], [0], color=RETURN_LINE_COLOR, linewidth=1.2, label="5min_return"),
+        Line2D([0], [0], color=RETURN_LINE_COLOR, linewidth=1.2, label=return_col),
         Patch(facecolor=LOW_VOL_COLOR, edgecolor="none", alpha=VOL_SPAN_ALPHA, label="VOL_LABEL = -1"),
         Patch(facecolor=HIGH_VOL_COLOR, edgecolor="none", alpha=VOL_SPAN_ALPHA, label="VOL_LABEL = 1"),
         Line2D([0], [0], color="black", linestyle="--", linewidth=1.1, label="split boundary"),
@@ -444,14 +444,14 @@ def plot_5min_return_by_vol(merged_data, daily_close=None, monthly_close=None, o
     if monthly_cutoff is not None and not pd.isna(monthly_cutoff):
         ax_vol.set_title(f"Daily Volatility (daily_vol_20, monthly_cutoff={monthly_cutoff:.6f})")
 
-    concat_high_legend = [
-        Line2D([0], [0], color=HIGH_VOL_COLOR, linewidth=1.2, label="high-vol 5min_return"),
-    ]
-    concat_low_legend = [
-        Line2D([0], [0], color=LOW_VOL_COLOR, linewidth=1.2, label="low-vol 5min_return"),
-    ]
-    ax_high_concat.legend(handles=concat_high_legend, loc="upper right")
-    ax_low_concat.legend(handles=concat_low_legend, loc="upper right")
+    ax_high_concat.legend(
+        handles=[Line2D([0], [0], color=HIGH_VOL_COLOR, linewidth=1.2, label=f"high-vol {return_col}")],
+        loc="upper right",
+    )
+    ax_low_concat.legend(
+        handles=[Line2D([0], [0], color=LOW_VOL_COLOR, linewidth=1.2, label=f"low-vol {return_col}")],
+        loc="upper right",
+    )
 
     if output_path is not None:
         output_path = Path(output_path)
@@ -459,98 +459,3 @@ def plot_5min_return_by_vol(merged_data, daily_close=None, monthly_close=None, o
         fig.savefig(output_path, dpi=200, bbox_inches="tight")
 
     return fig, (ax_return, ax_vol, ax_high_concat, ax_low_concat)
-
-
-def split_and_plot_by_vol(
-    data,
-    vol_threshold=None,
-    vol_percentage=None,
-    window=20,
-    train_ratio=0.7,
-    valid_ratio=0.15,
-    test_ratio=0.15,
-    label_train_only=True,
-    split_granularity="month",
-    output_path=None,
-    concat_output_dir=None,
-):
-    merged_data, low_vol, high_vol, daily_close, monthly_close = split_by_vol(
-        data=data,
-        vol_threshold=vol_threshold,
-        vol_percentage=vol_percentage,
-        window=window,
-        train_ratio=train_ratio,
-        valid_ratio=valid_ratio,
-        test_ratio=test_ratio,
-        label_train_only=label_train_only,
-        split_granularity=split_granularity,
-    )
-    fig, axes = plot_5min_return_by_vol(
-        merged_data,
-        daily_close=daily_close,
-        monthly_close=monthly_close,
-        output_path=output_path,
-    )
-    high_concat_df = _build_concatenated_regime_samples(merged_data, vol_label=1)
-    low_concat_df = _build_concatenated_regime_samples(merged_data, vol_label=-1)
-
-    concat_paths = None
-    if concat_output_dir is not None:
-        _, _, high_path, low_path = export_concatenated_regime_data(
-            merged_data,
-            output_dir=concat_output_dir,
-        )
-        concat_paths = (high_path, low_path)
-
-    return (
-        merged_data,
-        low_vol,
-        high_vol,
-        daily_close,
-        monthly_close,
-        high_concat_df,
-        low_concat_df,
-        fig,
-        axes,
-        concat_paths,
-    )
-
-
-if __name__ == "__main__":
-    data_path = Path("data/RBZL.SHF.csv")
-    raw_data = pd.read_csv(
-        data_path,
-        dtype={"CONTRACT": str, "CONTRACTID": str},
-        index_col=0,
-    )
-
-    (
-        merged_data,
-        low_vol,
-        high_vol,
-        daily_close,
-        monthly_close,
-        high_concat_df,
-        low_concat_df,
-        fig,
-        axes,
-        concat_paths,
-    ) = split_and_plot_by_vol(
-        raw_data,
-        vol_percentage=0.7,
-        label_train_only=True,
-        output_path="plots/5min_return_by_vol.png",
-        concat_output_dir="data/concatenated_regimes",
-    )
-
-    print(merged_data[["TDATE", "DATA_SPLIT", "DAILY_VOL_LABEL", "VOL_LABEL"]].head())
-    print(summarize_daily_vol(daily_close))
-    print(summarize_monthly_vol(monthly_close))
-    print(f"monthly_cutoff used for split: {monthly_close.attrs['monthly_cutoff']:.6f}")
-    print(f"low_vol rows: {len(low_vol)}")
-    print(f"high_vol rows: {len(high_vol)}")
-    print(high_concat_df[["TDATE", "MONTH", "BLOCK_ID", "concat_index", "VOL_LABEL"]].head())
-    print(low_concat_df[["TDATE", "MONTH", "BLOCK_ID", "concat_index", "VOL_LABEL"]].head())
-    if concat_paths is not None:
-        print(f"high-vol concatenated csv: {concat_paths[0]}")
-        print(f"low-vol concatenated csv: {concat_paths[1]}")

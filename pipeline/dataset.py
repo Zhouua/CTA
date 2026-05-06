@@ -25,7 +25,7 @@ if PROJECT_ROOT_STR not in sys.path:
 
 from config_utils import get_section, load_project_config, resolve_optional_paths, resolve_path, resolve_paths
 from dataloader.splitByVol import (
-    plot_5min_return_by_vol,
+    plot_target_return_by_vol,
     split_by_vol,
     summarize_daily_vol,
     summarize_monthly_vol,
@@ -889,9 +889,6 @@ class FactorDatasetBuilder:
         prepared["target_extreme_norm"] = (signed_extreme / (prepared["target_vol_scale"] + eps)).astype("float32")
         prepared["target_extreme"] = signed_extreme.astype("float32")
 
-        prepared["5min_return"] = np.log(
-            prepared.groupby(self.trade_date_col, dropna=False)["CLOSE"].shift(-5) / prepared["CLOSE"]
-        ).astype("float32")
         return prepared
 
     def _write_cache_meta(
@@ -1031,7 +1028,6 @@ class FactorDatasetBuilder:
             "target_vol_norm",
             "target_extreme_norm",
             "target_extreme",
-            "5min_return",
         }
 
     def prepare(self, force_rebuild: bool | None = None) -> PreparedData:
@@ -1051,11 +1047,13 @@ class FactorDatasetBuilder:
         )
 
         os.environ.setdefault("MPLCONFIGDIR", str((PROJECT_ROOT / ".mplconfig").resolve()))
-        plot_5min_return_by_vol(
+        plot_target_return_by_vol(
             merged_data=merged_data,
             daily_close=daily_close,
             monthly_close=monthly_close,
             output_path=self.paths["regime_plot"],
+            return_col="future_return",
+            target_horizon=int(self.settings["target_horizon"]),
         )
 
         source = self.settings["regime_label_source"]
