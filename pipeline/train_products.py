@@ -598,17 +598,22 @@ def build_failure_entry(product_id: str, error_message: str, trace_text: str) ->
 def _load_audit_thresholds(
     config_path: str | None,
     config_override: dict[str, Any] | None,
-) -> tuple[float, float, int]:
-    """从 config.yaml::factors.audit_thresholds 读取阈值，缺省走硬编码。"""
+) -> tuple[float, float, int, dict | None]:
+    """从 config.yaml::factors.audit_thresholds + factors.mid_audit 读取阈值。
+
+    Returns (min_abs_ic, min_icir, min_obs_per_window, mid_audit_cfg).
+    mid_audit_cfg is None when the block is absent (backward-compatible).
+    """
     config, _ = load_project_config(config_path, config_override=config_override)
     factors_cfg = get_section(config, "factors", {})
-    audit_cfg = (
-        factors_cfg.get("audit_thresholds", {}) if isinstance(factors_cfg, dict) else {}
-    ) or {}
+    factors_cfg = factors_cfg if isinstance(factors_cfg, dict) else {}
+    audit_cfg = factors_cfg.get("audit_thresholds", {}) or {}
+    mid_audit_cfg = factors_cfg.get("mid_audit") or None
     return (
         float(audit_cfg.get("min_abs_ic", 0.005)),
         float(audit_cfg.get("min_icir", 0.3)),
         int(audit_cfg.get("min_obs_per_window", 200)),
+        mid_audit_cfg,
     )
 
 
@@ -700,7 +705,7 @@ def run_single_product_training(
 
     # ③ 因子筛选（当场算 IC，当场写 per-product registry）
     print(f"[step 2/4] product={product_id} 因子筛选（walk-forward 月度 IC）...", flush=True)
-    min_abs_ic, min_icir, min_obs_per_window = _load_audit_thresholds(config_path, config_override)
+    min_abs_ic, min_icir, min_obs_per_window, mid_audit_cfg = _load_audit_thresholds(config_path, config_override)
     registry_path = product_dir / "factor_registry.json"
     selected_cols, _ = audit_and_filter(
         prepared=prepared,
@@ -708,6 +713,7 @@ def run_single_product_training(
         min_abs_ic=min_abs_ic,
         min_icir=min_icir,
         min_obs_per_window=min_obs_per_window,
+        mid_audit_cfg=mid_audit_cfg,
     )
     prepared = _apply_factor_selection(prepared, selected_cols)
 

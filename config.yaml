@@ -66,15 +66,31 @@ factors:
       - correlation
     cache_generated_features: true
   audit_thresholds:
-    # 因子筛选阈值，由 pipeline/factor_audit.py 在每个产品训练时即时判定。
-    # 流程：数据处理 → 因子计算 → 因子筛选(当场算IC) → 模型训练 → 回测。
-    # 数据源：当前产品 train split 按月切窗算 Spearman IC，聚合为 mean_ic/std_ic/icir。
-    # 判定规则（AND）：abs(mean_ic) >= min_abs_ic AND abs(icir) >= min_icir AND n_windows >= 3
-    # 结果当场写入 results/runs/<run_id>/<PID>/factor_registry.json（per-product，
-    # 取代旧的全局 data/factor_registry.json + feature_manifest.json）。
-    min_abs_ic: 0.005              # |mean_ic| 下限
-    min_icir: 0.3                  # |ICIR| 下限（mean_ic / std_ic，跨月稳定性）
-    min_obs_per_window: 200        # 单月样本下限，少于则该月跳过该因子
+    # Tier A：微观因子（ENG_*、runtime）。1分钟月度窗口，~2400 obs/窗口。
+    min_abs_ic: 0.005
+    min_icir: 0.3
+    min_obs_per_window: 200
+
+  mid_audit:
+    # Tier B/C：中观因子按原生频率计算 IC，与微观独立审计。
+    # 周频因子每月只有 4-5 个独立观测；1分钟粒度下相邻月 IC 约 75% 重叠，
+    # std_ic 被低估 2-3×，ICIR 虚高。原生频率下样本独立，估计诚实。
+    daily:                         # Tier B：日频中观。日度月度窗口，~22 obs/窗口。
+      min_abs_ic: 0.015
+      min_icir: 0.40
+      min_obs_per_window: 15
+    weekly:                        # Tier C：周/月频中观。周度季度窗口，~13 obs/窗口。
+      min_abs_ic: 0.030
+      min_icir: 0.40
+      min_obs_per_window: 8
+      max_raw_features: 6          # 每品种通过的原始指标上限（按 |ICIR| 取 top-N）
+    val_consistency:
+      # val 全段 IC（不做 walk-forward）作为第二门，防 factor decay。
+      # 要求 sign(IC_val)==sign(IC_train) 且 |IC_val| >= retention × |IC_train|。
+      required: true
+      daily_min_retention: 0.40
+      weekly_min_retention: 0.35
+    midxmicro_max_per_product: 15  # MIDxMICRO 不做独立 IC 审计；靠父因子门 + 硬上限
 
 mid_weekly:
   available_dummy: true            # emit MID_*_AVAILABLE int8 per level column
