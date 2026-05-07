@@ -161,9 +161,31 @@ model:
   persist_models: true
   min_regime_val_ic: -0.01  # regime quality gate: val spearman IC below this → position=0 for that regime
   sample_weight_alpha: 0    # 策略A: 0=均匀权重(当前), 1=线性, 2=平方; A/B对比先跑alpha=1
+  # build_model_settings 根据 data.use_mid_weekly 自动切换：
+  #   use_mid_weekly=true  → common_params（中观启用时用，旧默认 = tiered_mid_full 同款）
+  #   use_mid_weekly=false → common_params_micro_only（Optuna v1 最优，纯微观用）
   common_params:
-    # Optuna v1（micro-only，39 品种 mean val Spearman IC=0.02998 @ trial 20）
-    # 旧默认见 git 历史；用 Optuna 后 lr 减半、子采样力度加大、L1 替代 L2。
+    # 中观启用时使用旧默认参数。原计划用 Optuna v3 (narrow_mid) 替代，但全品种回测
+    # 显示 v3 平均 Sharpe=−0.358 反而劣于默认参数 (+0.096)，FU/J/AG 等强信号品种被打
+    # 散；详见 docs/model_thoughts.md §9.7。决策：保留默认值作为 with-mid 生产基线。
+    objective: regression
+    metric: l2
+    boosting_type: gbdt
+    learning_rate: 0.03
+    num_leaves: 63
+    max_depth: 6
+    feature_fraction: 0.8
+    bagging_fraction: 0.8
+    bagging_freq: 5
+    min_child_samples: 120
+    reg_alpha: 0.0
+    reg_lambda: 1.0
+    verbosity: -1
+    n_jobs: -1
+    seed: 42
+  common_params_micro_only:
+    # Optuna v1（micro-only，39 品种 mean val Spearman IC=0.02998 @ trial 20）。
+    # use_mid_weekly=false 时启用；纯微观下经全品种回测验证有效（见 model_thoughts §9.7）。
     objective: regression
     metric: l2
     boosting_type: gbdt
@@ -180,9 +202,12 @@ model:
     n_jobs: -1
     seed: 42
   low_vol_overrides: {}
-  high_vol_overrides: {}
-  # 注：旧版 high_vol 强制 min_child_samples=150（在 common=120 时是正向加强）；
-  # Optuna 把 common 推到 206 后，旧 override 反而降低高波域正则化 → 已移除。
+  high_vol_overrides:
+    min_child_samples: 150
+  # min_child_samples 走 max 语义（见 modeling.py::_resolve_regime_params）：
+  #   use_mid_weekly=true  → common=120, override=150 → high_vol 实际取 150（加强正则）
+  #   use_mid_weekly=false → common=206, override=150 → high_vol 实际取 206（override 不生效）
+  # 这保证 override 永远不降低高波域正则强度，与历史 tiered_mid_full / Optuna v1 搜索阶段一致。
 
 signal:
   signal_col: pred_return

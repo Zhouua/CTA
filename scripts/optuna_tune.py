@@ -178,7 +178,48 @@ def evaluate_trial(params_common: dict, caches: list[ProductCache], num_boost_ro
     return float(np.mean(product_ics))
 
 
-def make_objective(caches, num_boost_round, early_stopping_rounds):
+# 搜索空间预设：
+#   wide：v1 默认（pure-micro 调参），lr 已窄化、子采样允许下探到 0.5
+#   narrow_mid：v3 用（mid 启用），ff/bf 不低于 0.7、min_child 不高于 200，
+#               让中观因子在更多被采样的特征里有出场机会
+SEARCH_PROFILES = {
+    "wide": {
+        "learning_rate":     ("float_log", 0.005, 0.05),
+        "num_leaves":        ("int", 31, 127),
+        "max_depth":         ("int", 4, 10),
+        "min_child_samples": ("int", 50, 300),
+        "feature_fraction":  ("float", 0.5, 1.0),
+        "bagging_fraction":  ("float", 0.5, 1.0),
+        "reg_alpha":         ("float_log", 1e-8, 1.0),
+        "reg_lambda":        ("float_log", 1e-8, 5.0),
+    },
+    "narrow_mid": {
+        "learning_rate":     ("float_log", 0.005, 0.05),
+        "num_leaves":        ("int", 31, 127),
+        "max_depth":         ("int", 4, 10),
+        "min_child_samples": ("int", 50, 200),
+        "feature_fraction":  ("float", 0.7, 1.0),
+        "bagging_fraction":  ("float", 0.7, 1.0),
+        "reg_alpha":         ("float_log", 1e-8, 1.0),
+        "reg_lambda":        ("float_log", 1e-8, 5.0),
+    },
+}
+
+
+def _suggest(trial, name, spec):
+    kind, lo, hi = spec
+    if kind == "float":
+        return trial.suggest_float(name, lo, hi)
+    if kind == "float_log":
+        return trial.suggest_float(name, lo, hi, log=True)
+    if kind == "int":
+        return trial.suggest_int(name, lo, hi)
+    raise ValueError(f"unknown spec kind: {kind}")
+
+
+def make_objective(caches, num_boost_round, early_stopping_rounds, profile: str = "wide"):
+    space = SEARCH_PROFILES[profile]
+
     def _objective(trial: optuna.Trial) -> float:
         params = {
             "objective": "regression",
@@ -188,15 +229,7 @@ def make_objective(caches, num_boost_round, early_stopping_rounds):
             "n_jobs": -1,
             "seed": 42,
             "bagging_freq": 5,
-            # 搜索空间（基于用户指示窄化 lr）
-            "learning_rate":     trial.suggest_float("learning_rate", 0.005, 0.05, log=True),
-            "num_leaves":        trial.suggest_int("num_leaves", 31, 127),
-            "max_depth":         trial.suggest_int("max_depth", 4, 10),
-            "min_child_samples": trial.suggest_int("min_child_samples", 50, 300),
-            "feature_fraction":  trial.suggest_float("feature_fraction", 0.5, 1.0),
-            "bagging_fraction":  trial.suggest_float("bagging_fraction", 0.5, 1.0),
-            "reg_alpha":         trial.suggest_float("reg_alpha", 1e-8, 1.0, log=True),
-            "reg_lambda":        trial.suggest_float("reg_lambda", 1e-8, 5.0, log=True),
+            **{k: _suggest(trial, k, v) for k, v in space.items()},
         }
         # high_vol regime override：min_child_samples 至少 150（与 config.yaml 一致的方向）
         regime_overrides = {1: {"min_child_samples": max(int(params["min_child_samples"]), 150)}}
@@ -231,6 +264,8 @@ def main():
     ap.add_argument("--storage", default=None,
                     help="optional Optuna storage URI (e.g. sqlite:///results/optuna/study.db)")
     ap.add_argument("--study-name", default="cta_lgb_tune_v1")
+    ap.add_argument("--search-profile", choices=list(SEARCH_PROFILES.keys()), default="wide",
+                    help="搜索空间档位：wide（v1，纯微观）/ narrow_mid（v3，中观启用）")
     args = ap.parse_args()
 
     registry = load_registry(args.config)
@@ -271,8 +306,8 @@ def main():
     else:
         study = optuna.create_study(direction="maximize", pruner=pruner)
 
-    obj = make_objective(caches, args.num_boost_round, args.early_stopping_rounds)
-    print(f"[optuna] running {args.n_trials} trials (num_boost_round={args.num_boost_round}, ES={args.early_stopping_rounds})")
+    obj = make_objective(caches, args.num_boost_round, args.early_stopping_rounds, profile=args.search_profile)
+    print(f"[optuna] running {args.n_trials} trials profile={args.search_profile} (num_boost_round={args.num_boost_round}, ES={args.early_stopping_rounds})")
     study.optimize(obj, n_trials=args.n_trials, show_progress_bar=False)
 
     completed = [t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE]

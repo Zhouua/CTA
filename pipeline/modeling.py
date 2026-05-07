@@ -69,6 +69,16 @@ def build_model_settings(
         ["model_dir", "training_summary", "training_plot", "training_comparison_plot"],
     )
     model_cfg = get_section(config, "model")
+    data_cfg = get_section(config, "data")
+    # 根据 use_mid_weekly 自动选择参数集：
+    #   true  → common_params（中观启用时的最优）
+    #   false → common_params_micro_only（纯微观时的最优；fallback 到 common_params）
+    use_mid = bool(data_cfg.get("use_mid_weekly", False))
+    micro_only_params = model_cfg.get("common_params_micro_only")
+    if not use_mid and isinstance(micro_only_params, dict) and micro_only_params:
+        common_params = dict(micro_only_params)
+    else:
+        common_params = dict(model_cfg.get("common_params", {}))
     return {
         "config_path": str((Path(config_path).expanduser().resolve() if config_path else (PROJECT_ROOT / "config.yaml"))),
         "paths": paths,
@@ -79,7 +89,7 @@ def build_model_settings(
         "feature_importance_top_n": int(model_cfg.get("feature_importance_top_n", 20)),
         "persist_models": bool(model_cfg.get("persist_models", True)),
         "sample_weight_alpha": float(model_cfg.get("sample_weight_alpha", 0.0)),
-        "common_params": dict(model_cfg.get("common_params", {})),
+        "common_params": common_params,
         "low_vol_overrides": dict(model_cfg.get("low_vol_overrides", {})),
         "high_vol_overrides": dict(model_cfg.get("high_vol_overrides", {})),
     }
@@ -161,13 +171,24 @@ def _build_scaler(method: str) -> RobustScaler | StandardScaler | None:
 
 
 def _resolve_regime_params(settings: dict[str, Any], regime_name: str) -> dict[str, Any]:
+    """Resolve per-regime LightGBM params with semantic overrides.
+
+    Override semantics (special-cased to preserve regularization intent):
+    - min_child_samples: take max(common, override). 历史上 high_vol 用 150 加强正则
+      （在 common=120 时是真加强）；Optuna v1 把 common 推到 206 后，若按 replace
+      规则会反向降低高波域正则化，因此特殊化为 max 语义，保证"override 不会让正则
+      变弱"。
+    - 其他参数仍按 replace（dict.update）合并。
+    """
     params = dict(settings["common_params"])
-    if regime_name == "low_vol":
-        params.update(settings["low_vol_overrides"])
-    elif regime_name == "high_vol":
-        params.update(settings["high_vol_overrides"])
-    else:
+    overrides = settings["low_vol_overrides"] if regime_name == "low_vol" else settings["high_vol_overrides"] if regime_name == "high_vol" else None
+    if overrides is None:
         raise ValueError(f"Unknown regime_name: {regime_name}")
+    for key, val in overrides.items():
+        if key == "min_child_samples" and key in params:
+            params[key] = max(int(params[key]), int(val))
+        else:
+            params[key] = val
     return params
 
 

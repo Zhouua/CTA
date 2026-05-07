@@ -586,14 +586,121 @@ trial 阶段（每 trial 重复）：
 
 **决策：** 接受 Optuna v1 参数为新基线，理由：(i) 中位 Sharpe 与年化均改善；(ii) 头部组合的 Sharpe/回撤性价比更优，更适合产品化；(iii) 全样本年化 > 0 的品种数从 8 增至 15，覆盖面更广。
 
-### 9.8 v2 计划
+### 9.8 v2 实测结果（2026-05-07，Optuna v1 微观参数 + 中观）
 
-在 Optuna v1 微观参数基础上打开 `use_mid_weekly: true`，复用 §9 三层审计中观接入流程，跑全品种回测。验证两件事：
+直接复用 §9.7 的 Optuna v1 微观最优参数，仅打开 `use_mid_weekly=true`，不重新搜索；run = `optuna_micro_v2_with_mid`，对比基线 = `tiered_mid_full`（旧默认参数 + 中观，33 共同品种）。
 
-- 微观最优参数在中观加入后是否仍然适用（特征维度从 ~210 涨到 ~250、IC 信噪比变化）
-- 中观 + Optuna 双重增强能否进一步提升头部品种的稳健性
+| 指标 | tiered_mid_full | v2 (v1 micro 参数 + mid) | Δ |
+|---|---:|---:|---:|
+| 平均 Sharpe | **+0.096** | −0.068 | −0.164 |
+| 中位 Sharpe | +0.051 | 0.000 | −0.051 |
+| 平均年化 | +0.60% | **+3.43%** | +2.83pp |
+| 平均回撤 | −5.07% | −4.94% | +0.13pp |
+| 正 Sharpe 数 | **18/33** | 15/33 | −3 |
+| Sharpe ≥ 1.0 数 | 6/33 | 6/33 | 0 |
 
-对比基线：`tiered_mid_full`（v3 旧默认参数 + 中观）；如果 v2 显著优于 v1（纯微观）+ tiered_mid_full（中观+旧参），则形成新的多品种生产基线。
+**结论：v2 的高均值年化（+3.43%）几乎全部来自 AG 单品种被推上 +89.9%（回撤 −21%、556 笔交易）的伪头部贡献，剔除 AG 后均值年化反而仅 +0.13%、低于 tiered_mid_full 的 +0.62%**。Sharpe / 正 Sharpe 数 / 中位指标全面落后默认参数 + 中观组合。原因：v1 微观最优参数（feature_fraction=0.583、bagging_fraction=0.563）的激进子采样在纯微观下能压紧信号，但中观因子加入后特征维度由 ~210 涨到 ~250，激进子采样反而稀释了已通过 IC 审计的微观骨干因子的支配权，强信号品种（AL +1.66→+0.68、RB +1.77→−1.50、ZN +1.78→+0.41、J +0.35→−1.45）被打散。
+
+**决策：** 不接受 v2，进入 v3 在中观启用条件下重新搜索更保守的超参空间。
+
+### 9.9 v3 实测结果（2026-05-07，narrow_mid profile + 中观）
+
+在 `use_mid_weekly=true` 下重新搜索 30 trials，使用 `narrow_mid` profile 缩窄子采样下界（feature_fraction ≥ 0.7、min_child_samples ≤ 200）以让中观因子在更高比例的特征采样里有出场机会。
+
+**搜索结果：** 30 trials（19 完成 / 11 剪枝），39 品种参与，最优 mean(val Spearman IC) = **0.02648**（v1 是 0.02998；v3 略低但搜索空间更窄、含中观特征不可直接比较）。
+
+| 参数 | v1 (pure-micro) | **v3 (with-mid)** |
+|---|---:|---:|
+| learning_rate | 0.0118 | **0.0076** |
+| num_leaves | 62 | **47** |
+| max_depth | 7 | **8** |
+| min_child_samples | 206 | 193 |
+| feature_fraction | 0.583 | **0.808** |
+| bagging_fraction | 0.563 | **0.941** |
+| reg_alpha | 0.104 | 0.0031 |
+| reg_lambda | ~0 | 0.016 |
+
+v3 参数符合预期方向：相对 v1 显著放宽子采样（ff/bf 都 ≥ 0.8）、L1 大幅减小、L2 适度放回。
+
+**全品种 test 集回测对比（`optuna_micro_v3_with_mid` vs `tiered_mid_full`，33 共同品种）：**
+
+| 指标 | tiered_mid_full（默认+中观） | v3（v3+中观） | Δ |
+|---|---:|---:|---:|
+| 平均 Sharpe | **+0.096** | −0.358 | **−0.454** |
+| 中位 Sharpe | +0.051 | 0.000 | −0.051 |
+| 平均年化 | **+0.60%** | −0.63% | −1.23pp |
+| 中位年化 | +0.11% | 0.00% | −0.11pp |
+| 平均回撤 | −5.07% | **−4.74%** | +0.33pp |
+| 正 Sharpe 数 | **18/33** | 12/33 | −6 |
+| Sharpe ≥ 1.0 数 | **6/33** | 4/33 | −2 |
+
+**v3 反而比 tiered_mid_full 更差。** 风险调整后劣势显著（平均 Sharpe −0.358 vs +0.096），平均年化也由正转负，正 Sharpe 品种数 18 → 12 减少 6 个。
+
+**v3 vs tiered_mid_full 的赢家 / 输家：**
+
+| 大幅改善 | Δ年化 | 大幅退步 | Δ年化 |
+|:---:|:---:|:---:|:---:|
+| JD（鸡蛋） | +8.5pp | **FU（燃油）** | **−17.7pp** |
+| SP（纸浆） | +5.6pp | J（焦炭） | −9.4pp |
+| SS（不锈钢） | +5.5pp | AG（白银） | −9.2pp |
+| JM（焦煤） | +5.2pp | CU（沪铜） | −7.0pp |
+| EB（苯乙烯） | +4.8pp | AU（黄金） | −6.3pp |
+| RU（天然橡胶） | +4.7pp | AL（沪铝） | −6.0pp |
+
+最大灾难：FU 从 +16.3% / Sharpe +1.02 跌到 −1.4% / Sharpe −0.04，损失 17.7pp。
+
+**根本原因分析：**
+
+1. **目标函数与下游 Sharpe/年化脱钩**：v3 的 mean(val IC)=0.02648 即使略低于 v1，但仍然是搜索空间内最优；问题在于 mean(val IC) 提升不必然带来 mean(test Sharpe) 提升，尤其当中观因子加入后特征矩阵噪声增加，IC 与 Sharpe 的相关性进一步弱化
+2. **搜索空间约束反向**：narrow_mid 的 ff ≥ 0.7 / min_child ≤ 200 出于"让中观特征有出场机会"的初衷，但实际推出的最优参数（lr=0.0076、leaves=47）让模型过保守，没能挖掘出 tiered_mid_full（默认参数）已有的稳定性——默认参数 lr=0.03、leaves=63 才是中观启用下的真"局部最优"
+
+**最终决策：**
+
+- `common_params`（中观启用）→ **回滚到旧默认值**（与 tiered_mid_full 一致），由 §9.10 工程实现保证
+- `common_params_micro_only`（纯微观启用）→ 保留 Optuna v1 最优
+- v3 实验作为"Optuna 在中观启用下的边界验证"留档，不进入生产，**也不写进 report.md**（用户决策：研报口径以 tiered_mid_full 为生产基线）
+
+### 9.10 双套配置工程实现（最终落地）
+
+在 `config.yaml::model` 下分两块：
+
+```yaml
+common_params:               # use_mid_weekly=true 时启用（旧默认 = tiered_mid_full）
+  learning_rate: 0.03
+  num_leaves: 63
+  max_depth: 6
+  feature_fraction: 0.8
+  bagging_fraction: 0.8
+  min_child_samples: 120
+  reg_alpha: 0.0
+  reg_lambda: 1.0
+
+common_params_micro_only:    # use_mid_weekly=false 时启用（Optuna v1）
+  learning_rate: 0.0118
+  num_leaves: 62
+  max_depth: 7
+  feature_fraction: 0.583
+  bagging_fraction: 0.563
+  min_child_samples: 206
+  reg_alpha: 0.104
+  reg_lambda: 1.66e-7
+
+high_vol_overrides:
+  min_child_samples: 150     # max(common, 150) 语义见 modeling.py
+```
+
+`pipeline/modeling.py::build_model_settings` 按 `data.use_mid_weekly` 标志自动选；同时 `_resolve_regime_params` 把 `min_child_samples` 的 override 改为 max 语义，保证：
+
+- use_mid_weekly=true（common.min_child=120）：high_vol 实际取 max(120, 150) = **150**（加强正则，与 tiered_mid_full 一致）
+- use_mid_weekly=false（common.min_child=206）：high_vol 实际取 max(206, 150) = **206**（override 不生效，与 v1 搜索阶段一致）
+
+这样无论中观开关位置，high_vol 都不会比 low_vol 正则更弱。其他超参仍按 dict.update 走 replace 语义，不变。
+
+### 9.11 后续方向（暂不执行）
+
+- **目标函数升级**：从 mean(val IC) 改为 mean(val IC) − λ·mean(val pred_std)，或直接 mean(val Sharpe)（成本高 5—10×），降低对预测分布稳定性的隐性破坏
+- **专项产品化搜索**：针对 AL/M/PB/BU/I/V/NI 等稳健品种做窄目标 Optuna，解除全品种均值的拉平效应
+- 上述都属于研究方向，研报先按当前 `tiered_mid_full` + `optuna_v1`（micro-only）双套配置稳定出版
 
 
 
