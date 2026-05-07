@@ -35,7 +35,7 @@ data:
   force_rebuild_cache: false
   use_engineered_features: true
   use_synthetic_factors: true
-  use_mid_weekly: false        # Optuna 微观调参阶段：关闭中观因子
+  use_mid_weekly: true         # Optuna v2：打开中观，复用 v1 最优微观参数
   mid_alignment: asof_forward_fill
   engineered_windows:
     short: 5
@@ -162,24 +162,27 @@ model:
   min_regime_val_ic: -0.01  # regime quality gate: val spearman IC below this → position=0 for that regime
   sample_weight_alpha: 0    # 策略A: 0=均匀权重(当前), 1=线性, 2=平方; A/B对比先跑alpha=1
   common_params:
+    # Optuna v1（micro-only，39 品种 mean val Spearman IC=0.02998 @ trial 20）
+    # 旧默认见 git 历史；用 Optuna 后 lr 减半、子采样力度加大、L1 替代 L2。
     objective: regression
     metric: l2
     boosting_type: gbdt
-    learning_rate: 0.03
-    num_leaves: 63
-    max_depth: 6
-    feature_fraction: 0.8
-    bagging_fraction: 0.8
+    learning_rate: 0.0118
+    num_leaves: 62
+    max_depth: 7
+    feature_fraction: 0.583
+    bagging_fraction: 0.563
     bagging_freq: 5
-    min_child_samples: 120
-    reg_alpha: 0.0
-    reg_lambda: 1.0
+    min_child_samples: 206
+    reg_alpha: 0.104
+    reg_lambda: 1.66e-7
     verbosity: -1
     n_jobs: -1
     seed: 42
   low_vol_overrides: {}
-  high_vol_overrides:
-    min_child_samples: 150
+  high_vol_overrides: {}
+  # 注：旧版 high_vol 强制 min_child_samples=150（在 common=120 时是正向加强）；
+  # Optuna 把 common 推到 206 后，旧 override 反而降低高波域正则化 → 已移除。
 
 signal:
   signal_col: pred_return
