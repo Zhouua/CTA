@@ -941,16 +941,17 @@ class FactorDatasetBuilder:
             engineered_cols = list(dict.fromkeys(engineered_cols + mid_micro_cols))
         merged_df = self._add_targets(merged_df)
 
-        self.paths["merged_cache"].parent.mkdir(parents=True, exist_ok=True)
-        merged_df.to_parquet(self.paths["merged_cache"], index=False)
-        self._write_cache_meta(
-            feature_df=merged_df,
-            factor_cols=factor_cols,
-            engineered_cols=engineered_cols,
-            runtime_factor_cols=runtime_factor_cols,
-            mid_weekly_cols=mid_weekly_cols,
-            runtime_manifest=runtime_manifest,
-        )
+        if bool(self.settings.get("cache_merged_dataset", True)):
+            self.paths["merged_cache"].parent.mkdir(parents=True, exist_ok=True)
+            merged_df.to_parquet(self.paths["merged_cache"], index=False)
+            self._write_cache_meta(
+                feature_df=merged_df,
+                factor_cols=factor_cols,
+                engineered_cols=engineered_cols,
+                runtime_factor_cols=runtime_factor_cols,
+                mid_weekly_cols=mid_weekly_cols,
+                runtime_manifest=runtime_manifest,
+            )
         return merged_df, factor_cols, engineered_cols, runtime_factor_cols, mid_weekly_cols, runtime_manifest
 
     def load_or_build_feature_frame(

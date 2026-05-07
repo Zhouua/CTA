@@ -31,11 +31,11 @@ data:
   max_factor_missing_ratio: 0.35
   min_factor_std: 1.0e-8
   fill_method: forward_fill
-  cache_merged_dataset: true
+  cache_merged_dataset: false   # 全局关闭 merged feature parquet 缓存（读+写）
   force_rebuild_cache: false
   use_engineered_features: true
   use_synthetic_factors: true
-  use_mid_weekly: true         # 是否启用中观因子
+  use_mid_weekly: false        # Optuna 微观调参阶段：关闭中观因子
   mid_alignment: asof_forward_fill
   engineered_windows:
     short: 5
@@ -64,7 +64,7 @@ factors:
       - direction
       - volume
       - correlation
-    cache_generated_features: true
+    cache_generated_features: false   # 全局关闭 runtime 因子缓存
   audit_thresholds:
     # Tier A：微观因子（ENG_*、runtime）。1分钟月度窗口，~2400 obs/窗口。
     min_abs_ic: 0.005

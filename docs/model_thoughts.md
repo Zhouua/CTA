@@ -476,4 +476,79 @@ horizon=30 是 grid 中第 4 好，cutoff=0.65 是全局最优。
 
 **当前不改 horizon 的理由**：grid search 是纯微观条件下的结论。中观因子加入后毛利提升，horizon=30 的 cost/return ratio 变好。如果要重新实验应在中观因子配置下重跑。
 
+---
+
+## 9. Optuna 超参搜索（LightGBM common_params）
+
+### 9.1 动机
+
+`config.yaml::model.common_params` 中的 LightGBM 超参（learning_rate=0.03、num_leaves=63、max_depth=6、min_child_samples=120、feature_fraction=0.8、bagging_fraction=0.8、reg_alpha=0、reg_lambda=1.0）来自人工设定，未做系统性搜索。在中观因子框架稳定后，希望用 Optuna 对微观骨干层做一次系统调参，看是否能进一步压榨现有信号。
+
+### 9.2 设计原则
+
+- **全局参数，不做品种级调参**——所有品种共用一组超参（与 `feedback_no_per_product_tuning` 一致）。Optuna 找的是"对所有品种平均最优"，不是"在某个品种上最优"。
+- **目标函数 = mean(val Spearman IC)** 跨所有品种、按 val 行数在两个 regime 内加权后再算品种均值。选 IC 而非 val Sharpe 的原因：(i) 与训练目标贴近；(ii) 不需要在每个 trial 内额外跑回测，速度快 5—10×；(iii) val Sharpe 与 val IC 高度相关。
+- **测试集严格不参与**——Optuna 只看 train→val 流程，test 留作最终评估。
+- **保留早停**——每个 trial 内 LightGBM 仍走 num_boost_round=600 + early_stopping_rounds=50，防止单 trial 过拟合，同时让搜索更快（多数 trial 在 100—300 轮就停）。
+- **微观调参先行**——v1 以 `use_mid_weekly: false` 跑全品种调参，先把微观骨干层校准到位，再视情况打开中观重跑。
+
+### 9.3 搜索空间
+
+| 参数 | 当前值 | 搜索范围 | 类型 | 备注 |
+|---|---|---|---|---|
+| learning_rate | 0.03 | [0.005, 0.05] | log uniform | 用户指示窄化（避免过激 lr 把 ES 推早）|
+| num_leaves | 63 | [31, 127] | int | 与 max_depth 联动 |
+| max_depth | 6 | [4, 10] | int | 浅树→泛化、深树→拟合 |
+| min_child_samples | 120 | [50, 300] | int | high_vol 域强制下限 150 |
+| feature_fraction | 0.8 | [0.5, 1.0] | uniform | 列子采样 |
+| bagging_fraction | 0.8 | [0.5, 1.0] | uniform | 行子采样（freq=5）|
+| reg_alpha | 0 | [1e-8, 1.0] | log uniform | L1 |
+| reg_lambda | 1.0 | [1e-8, 5.0] | log uniform | L2 |
+
+### 9.4 工程实现要点
+
+入口：`scripts/optuna_tune.py`
+
+```
+prepare 阶段（每品种一次）：
+  prepare_data → audit_and_filter → 取 selected feature_cols
+  按 regime 切片 + 预 fit RobustScaler → 缓存 (X_train, y_train, X_val, y_val) 到内存
+
+trial 阶段（每 trial 重复）：
+  for product in products:
+    for regime in (-1, 1):
+      lgb.train(params=trial_params, early_stopping=50)
+      pred_val → spearman_ic(pred, y_val)
+    weighted_avg(regime_ics) → product_ic
+  mean(product_ics) → trial value
+```
+
+性能优化：
+
+- **特征矩阵缓存到内存**：避免每个 trial 重做 prepare_data（每品种 1—2 分钟）
+- **预先 fit scaler**：RobustScaler 只需 fit 一次，每 trial 直接 transform
+- **MedianPruner**：n_startup_trials=5、n_warmup_steps=n_products//6，差的 trial 中途中止
+- **sqlite 存储**（`results/optuna/study_*.db`）：支持中断续跑，同 study-name 启动会在已完成 trial 上接着跑
+
+### 9.5 与 config 的耦合
+
+- 关闭 parquet 缓存（`cache_merged_dataset: false`、`cache_generated_features: false`）——Optuna 跑期间不写盘
+- regime overrides 保留：`high_vol.min_child_samples` 强制 ≥ 150（与 `config.yaml::model.high_vol_overrides` 一致）
+- `early_stopping_rounds=50` 与生产配置同步
+
+搜索完毕后，最优参数写回 `model.common_params`（不写 `high_vol_overrides`，让现有 +30 min_child_samples 的规则继续生效），并以全品种回测验证 Sharpe / 收益 / 回撤是否真有提升。
+
+### 9.6 风险与边界
+
+- **多品种均值目标的拉平效应**：mean(IC) 偏好"对所有品种都还行"的参数，可能错过"在 4 个稳健品种上极强、其他品种平庸"的局部最优。如果未来要专注 AL/M/PB/BU 的产品化，需要单独在这 4 个品种上做一次窄目标搜索作为对照。
+- **超参与因子层耦合**：纯微观下找到的最优可能在加入中观后失效（特征维度从 ~210 涨到 ~250、IC 信噪比变化）。微观调参的结论需要在中观打开后做一次 sanity check。
+- **IC 与 Sharpe 错位风险**：val IC 高 ≠ val Sharpe 高。极少数情况会出现 trial 提升 IC 但 backtest Sharpe 反而下降（信号方向更准但过度自信致开仓密度过大）。最终决策仍以全品种回测的 Sharpe / 净值为准，而非 Optuna 目标值。
+
+### 9.7 后续迭代记录
+
+| 版本 | 配置 | 目标值 mean(val IC) | 最佳参数 | 全品种 test Sharpe vs 基线 |
+|---|---|---|---|---|
+| v1（运行中）| `use_mid_weekly=false`，30 trials | TBD | TBD | TBD |
+| v2（计划）| 在 v1 最优微观参数下打开中观重测 | — | — | — |
+
 

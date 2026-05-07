@@ -11,3 +11,5 @@ __pycache__
 results/*
 !results/comparison
 !results/backtest_macro
+
+.optuna_tmp

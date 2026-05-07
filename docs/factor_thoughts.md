@@ -382,9 +382,3 @@ factors.mid_audit:
 | v1（native-freq，无上限） | Tier C + val 一致性，无总量上限 | 未全批（仅8品） | — |
 | v2（+总量上限=8） | max_mid_total=8 | 未全批 | — |
 | **v3（+max_icir=0.9）** | max_icir 防季度过拟合 | **+0.305** | **11/29** |
-
-### 下一步方向
-
-1. **RR**：检查 `data/mid_weekly/RR.xlsx` 是否存在极端值或编码异常，需要清洗后重跑
-2. **pred_std 膨胀类（BU/SS/FB/JD）**：增加"val pred_std 稳定性"门——若中观因子加入后 val pred_std > N × 纯微观 pred_std，拒绝该品种的中观因子；或进一步降低 `max_mid_total_per_product`（如从 8 → 5）
-3. **选集替换类（JD/FB）**：这些品种在旧中观下"刚好"有好用的因子，Tier C 设计本质上改变了选集——可能需要接受"这类品种不适合加中观"的结论，或提供品种级 mid_weekly 开关（但需注意全局规则原则）
